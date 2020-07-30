@@ -9,4 +9,4 @@ edition = "2018"
 [dependencies]
 lasso = "*"
 im = "15" # TODO: maybe use im-rc cause we dont need thread-safe?
-typed_arena = "2"
+generational-arena = "*" # TODO: pin this version down more?

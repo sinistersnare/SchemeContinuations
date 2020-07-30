@@ -11,34 +11,15 @@
    Define(String, Vec<Expr>, Box<Expr>),
 */
 
-/// TODO: string type?
-#[derive(Debug)]
-pub enum Expr {
-   /// a name of something, like `foo`
-   Symbol(String),
-   /// a number, only f64 is supported in this lisp.
-   Numeric(f64),
-   /// can be function application `(f a b c)` or perhaps a list
-   /// that is being quoted like (quote (foo bar baaz))
-   /// which is a special form, but saying this for example
-   /// purposes.
-   /// This should represent a null-terminated list, like
-   /// (cons a (cons b (cons c '())))
-   List(Vec<Expr>),
-   /// hmmm couldnt think of a better way to do this,
-   /// this way a 'Dot' expr isnt needed... right???
-   /// an improper list is a list that DOESNT end in null.
-   /// (cons a (cons b c)) <==> '(a b . c)
-   ImproperList(Vec<Expr>),
-   Null,
-}
+use crate::eval::ScmObj;
 
 /// TODO: not a 'rust result', needa rename.
-#[derive(Debug)]
-pub enum ParseResult {
-   Expression(Expr),
+// #[derive(Debug)]
+pub enum ReadResult {
+   Expression(ScmObj),
    CloseParen,
    Dot,
+   Error(&'static str),
    EOF,
 }
 
@@ -83,7 +64,7 @@ impl Parser {
       }
    }
 
-   fn read_symbol(&mut self, mut symstr: String) -> Expr {
+   fn read_symbol(&mut self, mut symstr: String) -> ScmObj {
       // TODO we should intern these symbols? I think so.
       //    the interner should be a member of Self
       loop {
@@ -93,28 +74,29 @@ impl Parser {
                self.take(); // take it after we know we want it.
                symstr.push(peeked);
             } else {
-               return Expr::Symbol(symstr);
+               return ScmObj::Symbol(symstr);
             }
          } else {
-            return Expr::Symbol(symstr);
+            return ScmObj::Symbol(symstr);
          }
       }
    }
 
    /// already read the 'expr and returns (quote expr)
-   fn read_quote(&mut self) -> Expr {
+   fn read_quote(&mut self) -> ScmObj {
       // read in the next expr and wrap it in `(quote <expr>)`.
       let next_expr = self.read_expr();
       match next_expr {
-         ParseResult::Expression(e) => {
-            let list = vec![Expr::Symbol("quote".to_string()), e];
-            Expr::List(list)
+         ReadResult::Expression(e) => {
+            ScmObj::Cons(Box::new(ScmObj::Symbol("quote".into())),
+                         Box::new(e))
          },
-         ParseResult::Dot => panic!("Illegal use of `.`"),
-         ParseResult::CloseParen => panic!("Illegal use of `)`"),
-         ParseResult::EOF => {
+         ReadResult::Dot => panic!("Illegal use of `.`"),
+         ReadResult::CloseParen => panic!("Illegal use of `)`"),
+         ReadResult::EOF => {
             panic!("Tried reading a quoted thing but got EOF!");
          }
+         ReadResult::Error(e) => panic!(e),
       }
    }
 
@@ -122,7 +104,7 @@ impl Parser {
    // like if it saw a `-` followed by a number,
    // or a `.` followed by a number.
    // or a number followed by a number.
-   fn read_number(&mut self, mut numstr: String) -> Expr {
+   fn read_number(&mut self, mut numstr: String) -> ScmObj {
       while let Some(c) = self.peek() {
          if c.is_digit(10) || c == '.' || "~!@#$%^&*-_=+:/?<>".contains(c) {
             // take it when we know its a digit we want.
@@ -135,7 +117,7 @@ impl Parser {
          }
       }
       // TODO: proper error handing.
-      Expr::Numeric(numstr.parse().expect("Wasnt able to parse as a f64."))
+      ScmObj::Numeric(numstr.parse().expect("Wasnt able to parse as a f64."))
    }
 
 	/// already got the open paren before this was called.
@@ -143,7 +125,7 @@ impl Parser {
 	/// a dot, followed by a final element, then a CloseParen.
 	///    (this forms an improper list).
 	/// or a close paren, ending the list.
-   fn read_list(&mut self) -> Expr {
+   fn read_list(&mut self) -> ScmObj {
       if let Some(')') = self.peek() {
       	// I _THINK_ this is a hack. IDK THO LOL.
       	// like, idk if Null should be something we actually look for.
@@ -154,55 +136,45 @@ impl Parser {
          // im pretty sure its illegal, but... couldnt think of a
          // good way to just do '() and not ().
          self.take();
-         return Expr::Null;
+         return ScmObj::Null;
       }
 
-      let mut list = Vec::with_capacity(16);
-      loop {
-         let res = self.read_expr();
-         match res {
-            ParseResult::Expression(e) => {
-               list.push(e);
-            },
-            // finishes an improper list.
-            ParseResult::Dot => {
-               // take the last element,
-               // then take a close paren,
-               // but dont end the list with a Null.
-               let last = self.read_expr();
-               match last {
-                  ParseResult::Expression(final_e) => {
-                     let closer = self.take();
-                     if let Some(')') = closer {
-                     	list.push(final_e);
-                     	return Expr::ImproperList(list);
-                     } else {
-                        panic!("Expected ')' found {:?}", closer);
-                     }
-                  },
-                  ParseResult::Dot => panic!("Expected an expression, got `.`"),
-                  ParseResult::CloseParen => panic!("Expected an expression, got `)`"),
-                  ParseResult::EOF => panic!("expected an expression, got EOF!"),
+      let cur = self.read_expr();
+      match cur {
+         ReadResult::CloseParen => {
+            ScmObj::Null
+         },
+         ReadResult::Expression(e) => {
+            ScmObj::Cons(Box::new(e), Box::new(self.read_list()))
+         },
+         ReadResult::Dot => {
+            let improper_final = self.read_expr();
+            let close_paren = self.take();
+            if let Some(')') = close_paren {
+               match improper_final {
+                  ReadResult::Expression(e) => e,
+                  ReadResult::Dot => panic!("Expected an expression after a `.`, got `.`"),
+                  ReadResult::CloseParen => panic!("Expected an expression after a `.`, got `)`"),
+                  ReadResult::EOF => panic!("expected an expression after a `.`, got EOF!"),
+                  ReadResult::Error(e) => panic!(e),
                }
-            },
-            ParseResult::CloseParen => {
-               // properly end the list.
-               return Expr::List(list);
-            },
-            ParseResult::EOF => {
-               panic!("Got EOF mid list parse!");
+            } else {
+               panic!("Expected ')', found {:?}.", close_paren);
             }
-         }
+         },
+         ReadResult::EOF => { panic!("Got EOF mid list parse!"); },
+         ReadResult::Error(e) => { panic!("Error while reading an expr: {:?}", e); },
       }
    }
 
    /// TODO: i dont think this is a great function to make public.
-   /// Maybe it should be repackaged as an iterator of Result<Expression>
-   pub fn read_expr(&mut self) -> ParseResult {
+   /// Maybe the public API  should be an iterator of
+   /// Result<Expression> and use that one publicly.
+   pub fn read_expr(&mut self) -> ReadResult {
       loop {
          let took = self.take();
          if let None = took {
-            return ParseResult::EOF;
+            return ReadResult::EOF;
          }
          let c = took.unwrap();
          match c {
@@ -211,16 +183,16 @@ impl Parser {
             // comment
             ';' => { self.skip_line(); },
             '(' => {
-               return ParseResult::Expression(self.read_list());
+               return ReadResult::Expression(self.read_list());
             },
             ')' => {
-               return ParseResult::CloseParen;
+               return ReadResult::CloseParen;
             },
             // a number can be started simply
             '0'..='9' => {
                let mut numstr = String::with_capacity(16);
                numstr.push(c);
-               return ParseResult::Expression(self.read_number(numstr));
+               return ReadResult::Expression(self.read_number(numstr));
             },
             // a number can be started with a `-` to signify a negative number.
             // or it can be referencing a function called `-`.
@@ -230,15 +202,15 @@ impl Parser {
                   if peeked.is_digit(10) || peeked == '.' {
                      let mut numstr = String::with_capacity(16);
                      numstr.push(c);
-                     return ParseResult::Expression(self.read_number(numstr));
+                     return ReadResult::Expression(self.read_number(numstr));
                   } else {
                      let mut symstr = String::with_capacity(16);
                      symstr.push(c);
-                     return ParseResult::Expression(self.read_symbol(symstr));
+                     return ReadResult::Expression(self.read_symbol(symstr));
                   }
                } else {
                   // fast path!
-                  return ParseResult::Expression(Expr::Symbol("-".to_string()));
+                  return ReadResult::Expression(ScmObj::Symbol("-".to_string()));
                }
             },
             // can also start a number just with a `.` i.e. `.5` == `0.5`.
@@ -249,16 +221,16 @@ impl Parser {
                   if peeked.is_digit(10) {
                      let mut numstr = String::with_capacity(16);
                      numstr.push(c);
-                     return ParseResult::Expression(self.read_number(numstr));
+                     return ReadResult::Expression(self.read_number(numstr));
                   } else {
-                     return ParseResult::Dot;
+                     return ReadResult::Dot;
                   }
                } else {
                   panic!("Unexpected . before EOF!");
                }
             },
             '\'' => {
-               return ParseResult::Expression(self.read_quote());
+               return ReadResult::Expression(self.read_quote());
             },
             // TODO: this is ugly AF lol.
             c@'<'..='Z' | c@'a'..='z' | c@'~'
@@ -267,11 +239,12 @@ impl Parser {
                | c@'+' | c@':' | c@'/' => {
                let mut symstr = String::with_capacity(16);
                symstr.push(c);
-               return ParseResult::Expression(self.read_symbol(symstr));
+               return ReadResult::Expression(self.read_symbol(symstr));
             },
             _ => {
-               // TODO: maybe a ParseResult::Error would be cool?
-               return ParseResult::Expression(Expr::Symbol("TODO_ELSE!".to_string()));
+               // TODO: maybe a ReadResult::Error would be cool?
+               return ReadResult::Expression(ScmObj::Symbol("TODO_ELSE".into()));
+               // return ReadResult::Expression(Expr::Symbol("TODO_ELSE!".to_string()));
             },
          }
       }

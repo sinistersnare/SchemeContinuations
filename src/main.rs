@@ -7,10 +7,10 @@
 use std::env;
 use std::fs;
 
-pub mod parse;
+pub mod read;
 pub mod eval;
-pub use parse::{ParseResult, Parser};
-use eval::{Evaluator};
+pub use read::{ReadResult, Parser};
+use eval::Evaluator;
 
 fn main() {
    let program = if let Some(filename) = env::args().nth(1) {
@@ -18,7 +18,7 @@ fn main() {
    } else {
       // println!("REPL not available!");
       // "'(a b . c) (+ 1)".into()
-      "(cons 'a (cons 'b ('c '())))".into()
+      "(if 'boop (if 1 '(+ 12 12) 6) 3)".into()
    };
 
    println!("Parsing {:?}", program.trim());
@@ -26,22 +26,28 @@ fn main() {
    let mut parser = Parser::new(program.trim().to_string());
    let mut evaluator = Evaluator::new();
 
+   // if let ParseResult::Expression(p) = parser.read_expr() {
+   //    evaluator.eval(p);
+   // }
+
    loop {
       let expr = parser.read_expr();
       match expr {
-         ParseResult::Expression(parsed) => {
+         ReadResult::Expression(parsed) => {
             evaluator.eval(parsed);
-            // now to execute each parsed expr!!!!!!!.
          },
-         ParseResult::CloseParen => {
+         ReadResult::CloseParen => {
             panic!("Unbalanced close paren!");
          },
-         ParseResult::Dot => {
+         ReadResult::Dot => {
             panic!("Unexpected dot `.`!");
          },
-         ParseResult::EOF => {
+         ReadResult::Error(e) => {
+            panic!("Got an error while parsing an exp: {:?}", e)
+         },
+         ReadResult::EOF => {
             return;
-         }
+         },
       }
    }
 }
