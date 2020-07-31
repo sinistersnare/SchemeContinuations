@@ -9,6 +9,7 @@ use std::fs;
 
 pub mod read;
 pub mod eval;
+pub mod prims;
 pub use read::{ReadResult, Parser};
 use eval::Evaluator;
 
@@ -18,17 +19,13 @@ fn main() {
    } else {
       // println!("REPL not available!");
       // "'(a b . c) (+ 1)".into()
-      "(if 'boop (if 1 '(+ 12 12) 6) 3)".into()
+      "(+ 1 2) (if 'boop (if 1 '(+ 12 12) 6) 3)".into()
    };
 
    println!("Parsing {:?}", program.trim());
 
    let mut parser = Parser::new(program.trim().to_string());
    let mut evaluator = Evaluator::new();
-
-   // if let ParseResult::Expression(p) = parser.read_expr() {
-   //    evaluator.eval(p);
-   // }
 
    loop {
       let expr = parser.read_expr();

@@ -5,10 +5,9 @@ use std::collections::HashMap;
 use im;
 use generational_arena as arena;
 
-type PrimFunc = fn(&mut Evaluator, im::HashMap<String, arena::Index>, ScmObj) -> &mut ScmObj;
+use crate::prims::{self, PrimFunc};
 
 // TODO: string type?
-//#[derive(Debug)] // TODO gonna needa impl Debug by hand.
 pub enum ScmObj {
    Numeric(f64),
    Symbol(String),
@@ -57,7 +56,6 @@ impl std::fmt::Display for ScmObj {
    }
 }
 
-
 impl std::fmt::Debug for ScmObj {
    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
       match *self {
@@ -84,7 +82,7 @@ pub struct Evaluator {
    /// the heap used at runtime for the interpreter.
    heap: arena::Arena<ScmObj>,
    /// primitive functions and functionality
-   primitives: HashMap<String, PrimFunc>,
+   primitives: HashMap<&'static str, PrimFunc>,
    /// global symbols.
    symbols: HashMap<String, arena::Index>,
 }
@@ -95,7 +93,7 @@ impl Evaluator {
       constants.insert("null", ScmObj::Null);
       constants.insert("true", ScmObj::Bool(true));
       constants.insert("false", ScmObj::Bool(false));
-      let primitives = make_prims(); // just for code conciseness
+      let primitives = prims::make_prims(); // just for code conciseness
       Evaluator {
          primitives,
          constants,
@@ -111,7 +109,7 @@ impl Evaluator {
         println!("{}", res);
    }
 
-   fn eval_inner(&mut self, mut locals: im::HashMap<String, arena::Index>, expr: ScmObj) -> &mut ScmObj {
+   pub fn eval_inner(&mut self, mut locals: im::HashMap<String, arena::Index>, expr: ScmObj) -> &mut ScmObj {
       match expr {
          ScmObj::Symbol(ref s) => {
             self.fetch(&mut locals, s).expect(&*format!("Could not find symbol {:?}!", s))
@@ -159,11 +157,12 @@ impl Evaluator {
    /// fetch a ScmObj from the locals and the symbol table.
    fn fetch(&mut self, locals: &mut im::HashMap<String, arena::Index>, name: &str) -> Option<&mut ScmObj> {
       // TODO: why dont dis wurk.
-      // let idx = locals.get(name)
-      //       .or_else(|| self.symbols.get(name));
+      //       shit to do with borrowing self. Would be v v nice tho.
+      // locals.get(name)
+      //       .or_else(|| self.symbols.get(name))
       //       .and_then(|idx| self.heap.get_mut(*idx))
+      //       .or_else(|| Some(self.alloc(ScmObj::Primitive(self.primitives[name]))))
 
-      // TODO: check prims too.
       let idx =  if locals.contains_key(name) {
          locals[name]
       } else if self.symbols.contains_key(name) {
@@ -177,77 +176,13 @@ impl Evaluator {
       Some(self.heap.get_mut(idx).expect("It was in a table!"))
    }
 
-   fn alloc(&mut self, obj: ScmObj) -> &mut ScmObj {
+   pub fn alloc(&mut self, obj: ScmObj) -> &mut ScmObj {
       let new_obj = self.heap.insert(obj);
       self.heap.get_mut(new_obj).expect("I JUST MADE THIS INDEX!")
    }
 }
 
-// TODO: can this just be a HashMap<&'static str, _>?
-fn make_prims() -> HashMap<String, PrimFunc> {
-   // for some reason I need to explicitly annotate this!
-   let mut map: HashMap<_, PrimFunc> = HashMap::new();
-   map.insert("if".to_string(), prim_if);
-   map.insert("+".to_string(), prim_plus);
-   map.insert("quote".to_string(), prim_quote);
-   map
-}
-
-// TODO: this needs self. BUT HOW????? Also locals.
-fn prim_if(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: ScmObj) -> &mut ScmObj {
-   if let ScmObj::Cons(cond_part, then_else_rest) = args {
-      if let ScmObj::Cons(then_part, else_rest) = *then_else_rest {
-         if let ScmObj::Cons(else_part, null_part) = *else_rest {
-            if let ScmObj::Null = *null_part {
-               if is_truthy_value(*cond_part) {
-                  ctx.eval_inner(locals, *then_part)
-               } else {
-                  ctx.eval_inner(locals, *else_part)
-               }
-            } else {
-               panic!("`if` form requires 3 parts!")
-            }
-         } else {
-            panic!("`if` form requires 3 parts!")
-         }
-      } else {
-         panic!("`if` form requires 3 parts!")
-      }
-   } else {
-      panic!("`if` form requires 3 parts!")
-   }
-}
-
-/// Takes any number of arguments in a proper list, and returns the sum of them.
-/// if any of the args are not numbers, then this will fail.
-fn prim_plus(ctx: &mut Evaluator, _: im::HashMap<String, arena::Index>, args: ScmObj) -> &mut ScmObj {
-   let mut cur = args;
-   let mut sum = 0.0;
-   loop {
-      match cur {
-         ScmObj::Cons(car, cdr) => {
-            if let ScmObj::Numeric(n) = *car {
-               sum += n;
-               cur = *cdr;
-            } else {
-               panic!("Only numbers can be added!");
-            }
-         },
-         ScmObj::Null => { return ctx.alloc(ScmObj::Numeric(sum)); },
-         _ => { panic!("Only numbers can be added!")}
-      }
-   }
-}
-
-/// (quote 5) => (quote 5). Doesnt do anything!
-/// but (eval (quote 5)) does something. Hmmm how does that work!
-fn prim_quote(ctx: &mut Evaluator, _: im::HashMap<String, arena::Index>, args: ScmObj) -> &mut ScmObj {
-   ctx.alloc(ScmObj::Cons(Box::new(ScmObj::Symbol("quote".to_string())),
-                          Box::new(ScmObj::Cons(Box::new(args),
-                                                Box::new(ScmObj::Null)))))
-}
-
-fn is_truthy_value(val: ScmObj) -> bool {
+pub fn is_truthy_value(val: ScmObj) -> bool {
    if let ScmObj::Bool(false) = val {
       false
    } else {

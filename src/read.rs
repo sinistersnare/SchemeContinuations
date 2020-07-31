@@ -1,20 +1,10 @@
-
 //! A Parser of Scheme types.
 //! `Expr` is the AST type here that will be executed.
-//!
-//! TODO: rename this to 'read.rs'? seems right, with eval.rs.
-
-/*
-   /// an if conditional, with a then and else section
-   If(Box<Expr>, Box<Expr>, Box<Expr>),
-   /// a function definition, a name, args (list of datum), and a body.
-   Define(String, Vec<Expr>, Box<Expr>),
-*/
 
 use crate::eval::ScmObj;
 
 /// TODO: not a 'rust result', needa rename.
-// #[derive(Debug)]
+#[derive(Debug)]
 pub enum ReadResult {
    Expression(ScmObj),
    CloseParen,
