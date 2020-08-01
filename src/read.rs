@@ -60,7 +60,7 @@ impl Parser {
       loop {
          if let Some(peeked) = self.peek() {
             // TODO: check allowed symbols in another TODO elsewhere.
-            if peeked.is_alphabetic() || peeked.is_digit(10) {
+            if peeked.is_alphabetic() || peeked.is_digit(10) || "~!@#$%^&*-_=+:/?<>".contains(peeked) {
                self.take(); // take it after we know we want it.
                symstr.push(peeked);
             } else {
@@ -96,7 +96,7 @@ impl Parser {
    // or a number followed by a number.
    fn read_number(&mut self, mut numstr: String) -> ScmObj {
       while let Some(c) = self.peek() {
-         if c.is_digit(10) || c == '.' || "~!@#$%^&*-_=+:/?<>".contains(c) {
+         if c.is_digit(10) || c == '.' {
             // take it when we know its a digit we want.
             self.take();
             numstr.push(c);
@@ -224,13 +224,24 @@ impl Parser {
             },
             // TODO: this is ugly AF lol.
             c@'<'..='Z' | c@'a'..='z' | c@'~'
-               | c@'!' | c@'#' | c@'$' | c@'%'
+               | c@'!' | c@'$' | c@'%'
                | c@'^' | c@'&' | c@'*' | c@'_'
                | c@'+' | c@':' | c@'/' => {
                let mut symstr = String::with_capacity(16);
                symstr.push(c);
                return ReadResult::Expression(self.read_symbol(symstr));
             },
+            // symbols cant start with '#', so check for #t or #f.
+            '#' => {
+               let next = self.take();
+               if let Some('f') = next {
+                  return ReadResult::Expression(ScmObj::Bool(false));
+               } else if let Some('t') = next {
+                  return ReadResult::Expression(ScmObj::Bool(true));
+               } else {
+                  panic!("Only t/f allowed after #. Given {:?}", next);
+               }
+            }
             _ => {
                // TODO: maybe a ReadResult::Error would be cool?
                return ReadResult::Expression(ScmObj::Symbol("TODO_ELSE".into()));

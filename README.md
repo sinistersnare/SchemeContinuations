@@ -11,6 +11,13 @@ Implementation hints taken from
 TODO:
 * Replace usage of `panic!(...)` and other possibly panicking things with proper error handling. Things like `if idx_valid { vec[idx] }` can be kept.
 * a lot of pub functions should probably just be `pub(crate)`?
+* Symbol interning with some rust string-intern crate like Lasso.
+
+## Usage ##
+
+`cargo run` will run some default program from main.rs
+
+`cargo run -- file.scm` will run `file.scm`.
 
 LICENSE:
 

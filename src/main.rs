@@ -14,14 +14,47 @@ pub use read::{ReadResult, Parser};
 use eval::Evaluator;
 
 fn main() {
-   let program = if let Some(filename) = env::args().nth(1) {
-      fs::read_to_string(filename).expect("Could not read file")
+   if let Some(filename) = env::args().nth(1) {
+      exec_string(fs::read_to_string(filename).expect("Could not read file"))
    } else {
-      // println!("REPL not available!");
-      // "'(a b . c) (+ 1)".into()
-      "(+ 1 1  ) (void? 1)".into()
+      start_repl();
    };
+}
 
+fn start_repl() {
+   use std::io::{stdin, stdout, Write};
+   let mut input = String::new();
+   let mut evaluator = Evaluator::new();
+
+   loop {
+      print!("> ");
+      let _ = stdout().flush();
+      stdin().read_line(&mut input).expect("Did not enter a full string.");
+      let mut parser = Parser::new(input.trim().to_string());
+      loop {
+         let expr = parser.read_expr();
+         match expr {
+            ReadResult::Expression(parsed) => {
+               evaluator.eval(parsed);
+               input.clear();
+            },
+            ReadResult::EOF => {
+               break;
+            },
+            ReadResult::Dot => {
+               panic!("Unexpected dot `.`!");
+            },
+            ReadResult::CloseParen => {
+               panic!("Unbalanced close paren!");
+            },
+            ReadResult::Error(e) => {
+               panic!("Got an error while parsing an exp: {:?}", e);
+            },
+         }}
+   }
+}
+
+fn exec_string(program: String) {
    println!("Parsing {:?}", program.trim());
 
    let mut parser = Parser::new(program.trim().to_string());
@@ -40,7 +73,7 @@ fn main() {
             panic!("Unexpected dot `.`!");
          },
          ReadResult::Error(e) => {
-            panic!("Got an error while parsing an exp: {:?}", e)
+            panic!("Got an error while parsing an exp: {:?}", e);
          },
          ReadResult::EOF => {
             return;

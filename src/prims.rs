@@ -14,10 +14,12 @@ pub fn make_prims() -> HashMap<&'static str, PrimFunc> {
    let mut map: HashMap<_, PrimFunc> = HashMap::new();
    map.insert("if", prim_if);
    map.insert("+", prim_plus);
+   map.insert("*", prim_mul);
    map.insert("quote", prim_quote);
    map.insert("void", prim_void);
    map.insert("void?", prim_void_huh);
    map.insert("begin", prim_begin);
+   map.insert("not", prim_not);
    map
 }
 
@@ -26,7 +28,7 @@ fn prim_if(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args:
       if let ScmObj::Cons(then_part, else_rest) = *then_else_rest {
          if let ScmObj::Cons(else_part, null_part) = *else_rest {
             if let ScmObj::Null = *null_part {
-               if is_truthy_value(*cond_part) {
+               if is_truthy_value(ctx.eval_inner(locals.clone(), *cond_part)) {
                   ctx.eval_inner(locals, *then_part)
                } else {
                   ctx.eval_inner(locals, *else_part)
@@ -47,13 +49,13 @@ fn prim_if(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args:
 
 /// Takes any number of arguments in a proper list, and returns the sum of them.
 /// if any of the args are not numbers, then this will fail.
-fn prim_plus(ctx: &mut Evaluator, _: im::HashMap<String, arena::Index>, args: ScmObj) -> &mut ScmObj {
+fn prim_plus(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: ScmObj) -> &mut ScmObj {
    let mut cur = args;
-   let mut sum = 0.0;
+   let mut sum: f64 = 0.0;
    loop {
       match cur {
          ScmObj::Cons(car, cdr) => {
-            if let ScmObj::Numeric(n) = *car {
+            if let ScmObj::Numeric(n) = *ctx.eval_inner(locals.clone(), *car) {
                sum += n;
                cur = *cdr;
             } else {
@@ -62,6 +64,27 @@ fn prim_plus(ctx: &mut Evaluator, _: im::HashMap<String, arena::Index>, args: Sc
          },
          ScmObj::Null => { return ctx.alloc(ScmObj::Numeric(sum)); },
          _ => { panic!("Only numbers can be added!")}
+      }
+   }
+}
+
+/// Takes any number of arguments in a proper list, and returns the product of them.
+/// if any of the args are not numbers, then this will fail.
+fn prim_mul(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: ScmObj) -> &mut ScmObj {
+   let mut cur = args;
+   let mut sum: f64 = 1.0;
+   loop {
+      match cur {
+         ScmObj::Cons(car, cdr) => {
+            if let ScmObj::Numeric(n) = *ctx.eval_inner(locals.clone(), *car) {
+               sum *= n;
+               cur = *cdr;
+            } else {
+               panic!("Only numbers can be multiplied!");
+            }
+         },
+         ScmObj::Null => { return ctx.alloc(ScmObj::Numeric(sum)); },
+         _ => { panic!("Only numbers can be multiplied!")}
       }
    }
 }
@@ -105,11 +128,7 @@ fn prim_begin(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, ar
       if let ScmObj::Null = latest {
          return ctx.get_const("void");
       } else if let ScmObj::Cons(car, cdr) = latest {
-         // I think I need to clone this here!
-         // because i need to reuse it each time.
-         // but this is cheap beacuse its an immutable map!
-         // good choice past davis!
-         // let ret = ctx.eval_inner(locals.clone(), *car);
+         // must replicate the eval_inner due to some lifetime shit.
          if let ScmObj::Null = &*cdr {
             return ctx.eval_inner(locals.clone(), *car);
          } else {
@@ -119,5 +138,27 @@ fn prim_begin(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, ar
       } else {
          panic!("Args must be a proper list!");
       }
+   }
+}
+
+/// TODO: this can be impld as a regular function, not a primitive.
+fn prim_not(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: ScmObj) -> &mut ScmObj {
+   if let ScmObj::Cons(car, cdr) = args {
+      if let ScmObj::Null = *cdr {
+         if let ScmObj::Bool(b) = ctx.eval_inner(locals, *car) {
+            // ctx.get_const(if *b { "true" } else { "false" })
+            if *b {
+               ctx.get_const("true")
+            } else {
+               ctx.get_const("false")
+            }
+         } else {
+            panic!("Arg to `not` must be a bool.");
+         }
+      } else {
+         panic!("`not` takes only 1 argument.");
+      }
+   } else {
+      panic!("Args must be a proper list!");
    }
 }

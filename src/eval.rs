@@ -144,7 +144,6 @@ impl Evaluator {
    }
 
    pub fn eval_inner(&mut self, mut locals: im::HashMap<String, arena::Index>, expr: ScmObj) -> &mut ScmObj {
-      println!("evaling: {:?}", expr);
       match expr {
          ScmObj::Symbol(ref s) => {
             self.fetch(&mut locals, s).expect(&*format!("Could not find symbol {:?}!", s))
@@ -160,26 +159,17 @@ impl Evaluator {
          // TODO: do we need to realloc this every time? idk LOL
          p@ScmObj::Primitive(_) => self.alloc(p),
          ScmObj::Bool(b) => {
-            self.get_const(if b { "true" } else { "false "})
+            self.get_const(if b { "true" } else { "false"})
          },
          ScmObj::Other => {panic!("This type shouldnt exist! WTF DAVIS!")},
       }
    }
 
-   fn eval_list(&mut self, mut locals: im::HashMap<String, arena::Index>, car: Box<ScmObj>, cdr: Box<ScmObj>) -> &mut ScmObj {
-      match &*car {
-         ScmObj::Symbol(ref s) => {
-            let val = self.fetch(&mut locals, s);
-            if let Some(ScmObj::Primitive(f)) = val {
-               f(self, locals, *cdr)
-            } else {
-               // TODO: callables!!!!
-               self.get_const("void")
-            }
-         },
-         _e => {
-            panic!("first element of application-list must be a callable!");
-         },
+   fn eval_list(&mut self, locals: im::HashMap<String, arena::Index>, car: Box<ScmObj>, cdr: Box<ScmObj>) -> &mut ScmObj {
+      if let ScmObj::Primitive(pf) = self.eval_inner(locals.clone(), *car) {
+         pf(self, locals, *cdr)
+      } else {
+         panic!("Only primitives currently supported.");
       }
    }
 
@@ -195,7 +185,7 @@ impl Evaluator {
       //       shit to do with borrowing self. Would be v v nice tho.
       // locals.get(name)
       //       .or_else(|| self.symbols.get(name))
-      //       .and_then(|idx| self.heap.get_mut(*idx))
+      //       .and_then(|idx| self.heap.get_mut(*idx)) // should work if an idx exists.
       //       .or_else(|| Some(self.alloc(ScmObj::Primitive(self.primitives[name]))))
 
       let idx =  if locals.contains_key(name) {
@@ -217,7 +207,7 @@ impl Evaluator {
    }
 }
 
-pub fn is_truthy_value(val: ScmObj) -> bool {
+pub fn is_truthy_value(val: &mut ScmObj) -> bool {
    if let ScmObj::Bool(false) = val {
       false
    } else {
