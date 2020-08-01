@@ -9,29 +9,62 @@ use crate::prims::{self, PrimFunc};
 
 // TODO: string type?
 pub enum ScmObj {
+   /// A number. All numbers in this language
+   /// are double precision floating points.
+   /// Because youre not special enough to need integers.
    Numeric(f64),
+   /// A Symbol, which is any text.
+   /// examples: `+`, `hello`, `&lol`
    Symbol(String),
-   Cons(Box<ScmObj>, Box<ScmObj>), // what type here hmmm
-   Null,
-   Void,
+   /// A boolean value, true or false.
    Bool(bool),
+   /// A Cons cell, which has a first and second object.
+   /// this is often used to create a linked list.
+   /// TODO: is it OK that these are in boxes?
+   ///      I think these need to be allocated in the
+   ///      languages heap, not the Rust heap.
+   Cons(Box<ScmObj>, Box<ScmObj>),
+   /// used to signal an empty list. represented by '()
+   /// which is (quote ()).
+   Null,
+   /// the complete absence of a value. usually returned by functions
+   /// like print
+   Void,
+   /// A primitive function, implemented by the interpreter.
    Primitive(PrimFunc),
-   Other, // probably shouldnt be a thing :P
+   /// Probably shouldnt be a thing :p.
+   Other,
    // unimplemented types.
-   // Void, Bool, Closure, Cons,
-   // Int, Str, Vector, Hash, Set, Other
+   // Closure, Int, Str, Vector, Hash, Set
 }
 
 fn print_cons(f: &mut std::fmt::Formatter<'_>, car: &ScmObj, cdr: &ScmObj) -> std::fmt::Result {
-   // TODO this prints an extra space in a proper list :(
-   print!("{} ", car);
+   // TODO: use Display formatting here even though
+   //       this function is used in Debug formatter.
+   //       there is no diff between the two atm,
+   //       so this is kinda a hacky solution.
+   //       if debug formatting of Lists changes,
+   //       we will have to deal with that
+   write!(f, "{} ", car)?;
    match cdr {
-      ScmObj::Cons(cadr, cddr) => print_cons(f, cadr, cddr),
-      ScmObj::Null => write!(f, ")"),
+      ScmObj::Cons(cadr, cddr) => {
+         print_cons(f, cadr, cddr)
+      },
+      // FIXME: THIS IS FUCKING FUCK UGLY!!!!!!!!!!!!!!!
+      // DAVIS YOU FUCKER
+      // YOU SHOULDNT USE ESCAPE SEQUENCES DAVIS
+      // but lifetimes are hard :(
+      // FUCK YOU
+      ScmObj::Null => {
+         // write a backspace ascii code to the formatter
+         // because im not smart enough to get around
+         // lifetime stuff I guess.
+         write!(f, "{}", (8u8 as char))?;
+         write!(f, ")")},
       _ => {
-         write!(f, ". ")
-            .and_then(|_| write!(f, "{}", cdr)
-                           .and_then(|_| write!(f, ")")))
+         write!(f, ". ")?;
+         write!(f, "{}", cdr)?;
+         write!(f, ")")
       }
    }
 }
@@ -41,7 +74,7 @@ impl std::fmt::Display for ScmObj {
       match *self {
          ScmObj::Numeric(n) => write!(f, "{}", n),
          ScmObj::Symbol(ref s) => write!(f, "{}", s),
-         ScmObj::Null => write!(f, "'()"),
+         ScmObj::Null => write!(f, "()"),
          ScmObj::Bool(true) => write!(f, "#t"),
          ScmObj::Bool(false) => write!(f, "#f"),
          ScmObj::Void => write!(f, "#<void>"),
@@ -93,6 +126,7 @@ impl Evaluator {
       constants.insert("null", ScmObj::Null);
       constants.insert("true", ScmObj::Bool(true));
       constants.insert("false", ScmObj::Bool(false));
+      constants.insert("void", ScmObj::Void);
       let primitives = prims::make_prims(); // just for code conciseness
       Evaluator {
          primitives,
@@ -110,6 +144,7 @@ impl Evaluator {
    }
 
    pub fn eval_inner(&mut self, mut locals: im::HashMap<String, arena::Index>, expr: ScmObj) -> &mut ScmObj {
+      println!("evaling: {:?}", expr);
       match expr {
          ScmObj::Symbol(ref s) => {
             self.fetch(&mut locals, s).expect(&*format!("Could not find symbol {:?}!", s))
@@ -150,7 +185,7 @@ impl Evaluator {
 
    /// fetch a ScmObj from the constant pool
    ///   (is this called the constant pool? Or is that something else?)
-   fn get_const(&mut self, name: &'static str) -> &mut ScmObj {
+   pub fn get_const(&mut self, name: &'static str) -> &mut ScmObj {
       self.constants.get_mut(name).expect(&*format!("ITS A CONSTANT! {:?}", name))
    }
 

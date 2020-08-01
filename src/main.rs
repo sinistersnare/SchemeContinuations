@@ -19,7 +19,7 @@ fn main() {
    } else {
       // println!("REPL not available!");
       // "'(a b . c) (+ 1)".into()
-      "(+ 1 2) (if 'boop (if 1 '(+ 12 12) 6) 3)".into()
+      "(+ 1 1  ) (void? 1)".into()
    };
 
    println!("Parsing {:?}", program.trim());
