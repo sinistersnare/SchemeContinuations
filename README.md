@@ -15,7 +15,7 @@ TODO:
 
 ## Usage ##
 
-`cargo run` will run some default program from main.rs
+`cargo run` will run a REPL! Quit with Ctrl-C, Ctrl-D doesnt work.
 
 `cargo run -- file.scm` will run `file.scm`.
 
