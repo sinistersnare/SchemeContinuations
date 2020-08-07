@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use im;
 use generational_arena as arena;
 
-use crate::eval::{ScmObj, Evaluator, is_truthy_value};
+use crate::eval::{Evaluator, is_truthy_value};
+use crate::ScmObj;
 
 pub type PrimFunc = fn(&mut Evaluator, im::HashMap<String, arena::Index>, ScmObj) -> &mut ScmObj;
 

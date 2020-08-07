@@ -1,7 +1,7 @@
 //! A Parser of Scheme types.
 //! `Expr` is the AST type here that will be executed.
 
-use crate::eval::ScmObj;
+use crate::ScmObj;
 
 /// TODO: not a 'rust result', needa rename.
 #[derive(Debug)]
