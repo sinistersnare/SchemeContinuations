@@ -7,7 +7,11 @@ use generational_arena as arena;
 
 use crate::prims::{self, PrimFunc};
 
-// TODO: string type?
+struct StackFrame {
+   args: Vec<ScmObj>,
+   locals: HashMap<String, ScmObj>,
+}
+
 pub enum ScmObj {
    /// A number. All numbers in this language
    /// are double precision floating points.
@@ -32,6 +36,8 @@ pub enum ScmObj {
    Void,
    /// A primitive function, implemented by the interpreter.
    Primitive(PrimFunc),
+   /// A scheme function. Contains a list of formal params,
+   Func(Vec<String>, ),
    /// Probably shouldnt be a thing :p.
    Other,
    // unimplemented types.
