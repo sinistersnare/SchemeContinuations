@@ -10,7 +10,6 @@
 use std::collections::HashMap;
 
 use generational_arena as arena;
-use im;
 
 use crate::eval::Evaluator;
 use crate::{is_truthy_value, ScmObj};
@@ -49,10 +48,10 @@ fn prim_if(
    locals: im::HashMap<String, arena::Index>,
    args: arena::Index,
 ) -> arena::Index {
-   if let &ScmObj::Cons(cond_part, then_else_rest) = ctx.deref_value(args) {
-      if let &ScmObj::Cons(then_part, else_rest) = ctx.deref_value(then_else_rest) {
-         if let &ScmObj::Cons(else_part, null_part) = ctx.deref_value(else_rest) {
-            if let &ScmObj::Null = ctx.deref_value(null_part) {
+   if let ScmObj::Cons(cond_part, then_else_rest) = *ctx.deref_value(args) {
+      if let ScmObj::Cons(then_part, else_rest) = *ctx.deref_value(then_else_rest) {
+         if let ScmObj::Cons(else_part, null_part) = *ctx.deref_value(else_rest) {
+            if let ScmObj::Null = *ctx.deref_value(null_part) {
                let cond_val = ctx.eval_inner(locals.clone(), cond_part);
                if is_truthy_value(ctx.deref_value(cond_val)) {
                   ctx.eval_inner(locals, then_part)
@@ -149,9 +148,9 @@ fn prim_cons(
    locals: im::HashMap<String, arena::Index>,
    args: arena::Index,
 ) -> arena::Index {
-   if let &ScmObj::Cons(car, cdr) = ctx.deref_value(args) {
-      if let &ScmObj::Cons(cadr, cddr) = ctx.deref_value(cdr) {
-         if let &ScmObj::Null = ctx.deref_value(cddr) {
+   if let ScmObj::Cons(car, cdr) = *ctx.deref_value(args) {
+      if let ScmObj::Cons(cadr, cddr) = *ctx.deref_value(cdr) {
+         if let ScmObj::Null = *ctx.deref_value(cddr) {
             let quote = ctx.alloc(ScmObj::Symbol("quote".to_string()));
             let eval_car = ctx.eval_inner(locals.clone(), car);
             let eval_cadr = ctx.eval_inner(locals, cadr);
@@ -174,10 +173,10 @@ fn prim_void_huh(
    args: arena::Index,
 ) -> arena::Index {
    // this function only allows a 1-length list.
-   if let &ScmObj::Cons(car, cdr) = ctx.deref_value(args) {
-      if let &ScmObj::Null = ctx.deref_value(cdr) {
+   if let ScmObj::Cons(car, cdr) = *ctx.deref_value(args) {
+      if let ScmObj::Null = *ctx.deref_value(cdr) {
          let void_val = ctx.eval_inner(locals, car);
-         if let ScmObj::Void = ctx.deref_value(void_val) {
+         if let ScmObj::Void = *ctx.deref_value(void_val) {
             ctx.get_const("true")
          } else {
             ctx.get_const("false")
@@ -199,15 +198,15 @@ fn prim_begin(
 ) -> arena::Index {
    let mut latest = args;
    loop {
-      if let &ScmObj::Cons(car, cdr) = ctx.deref_value(latest) {
+      if let ScmObj::Cons(car, cdr) = *ctx.deref_value(latest) {
          // must replicate the eval_inner due to some lifetime shit.
-         if let ScmObj::Null = ctx.deref_value(cdr) {
-            return ctx.eval_inner(locals.clone(), car);
+         if let ScmObj::Null = *ctx.deref_value(cdr) {
+            return ctx.eval_inner(locals, car);
          } else {
             ctx.eval_inner(locals.clone(), car);
             latest = cdr;
          }
-      } else if let ScmObj::Null = ctx.deref_value(latest) {
+      } else if let ScmObj::Null = *ctx.deref_value(latest) {
          return ctx.get_const("void");
       } else {
          panic!("Args must be a proper list!");
@@ -221,16 +220,11 @@ fn prim_not(
    locals: im::HashMap<String, arena::Index>,
    args: arena::Index,
 ) -> arena::Index {
-   if let ScmObj::Cons(car, cdr) = ctx.deref_value(args) {
-      if let ScmObj::Null = ctx.deref_value(*cdr) {
-         let bool_val = ctx.eval_inner(locals, *car);
-         if let ScmObj::Bool(b) = ctx.deref_value(bool_val) {
-            // ctx.get_const(if *b { "true" } else { "false" })
-            if *b {
-               ctx.get_const("true")
-            } else {
-               ctx.get_const("false")
-            }
+   if let ScmObj::Cons(car, cdr) = *ctx.deref_value(args) {
+      if let ScmObj::Null = *ctx.deref_value(cdr) {
+         let bool_val = ctx.eval_inner(locals, car);
+         if let ScmObj::Bool(b) = *ctx.deref_value(bool_val) {
+            ctx.get_const(if b { "true" } else { "false" })
          } else {
             panic!("Arg to `not` must be a bool.");
          }
@@ -248,12 +242,13 @@ fn prim_define(
    locals: im::HashMap<String, arena::Index>,
    args: arena::Index,
 ) -> arena::Index {
-   if let &ScmObj::Cons(name, val_rest) = ctx.deref_value(args) {
-      if let &ScmObj::Cons(val, null_part) = ctx.deref_value(val_rest) {
-         if let ScmObj::Null = ctx.deref_value(null_part) {
+   if let ScmObj::Cons(name, val_rest) = *ctx.deref_value(args) {
+      if let ScmObj::Cons(val, null_part) = *ctx.deref_value(val_rest) {
+         if let ScmObj::Null = *ctx.deref_value(null_part) {
             // stolen from elsewhere
+            // TODO: prettier way to do this?
             let is_sym = {
-               if let ScmObj::Symbol(s) = ctx.deref_value(name) {
+               if let ScmObj::Symbol(ref s) = *ctx.deref_value(name) {
                   Some(s.clone())
                } else {
                   None
@@ -283,30 +278,30 @@ fn prim_lambda(
    _: im::HashMap<String, arena::Index>,
    args: arena::Index,
 ) -> arena::Index {
-   if let ScmObj::Cons(formals_obj, body_rest) = ctx.deref_value(args) {
+   if let ScmObj::Cons(formals_obj, body_rest) = *ctx.deref_value(args) {
       // add all the formals into a vec
       let mut formal_names = Vec::new();
       let mut cur = formals_obj;
       loop {
-         if let ScmObj::Cons(formal, rest) = ctx.deref_value(*cur) {
-            if let ScmObj::Symbol(s) = ctx.deref_value(*formal) {
+         if let ScmObj::Cons(formal, rest) = *ctx.deref_value(cur) {
+            if let ScmObj::Symbol(s) = ctx.deref_value(formal) {
                formal_names.push(s.clone());
             } else {
                panic!("The list of formal parameters must be symbols!");
             }
             cur = rest;
-         } else if let ScmObj::Null = ctx.deref_value(*cur) {
+         } else if let ScmObj::Null = *ctx.deref_value(cur) {
             break;
          } else {
             panic!("The formal list must be a proper list!");
          }
       }
       // now ensure the body is a single ScmObj.
-      if let ScmObj::Cons(body, rest) = ctx.deref_value(*body_rest) {
-         if let ScmObj::Null = ctx.deref_value(*rest) {
+      if let ScmObj::Cons(body, rest) = *ctx.deref_value(body_rest) {
+         if let ScmObj::Null = *ctx.deref_value(rest) {
             // dont eval the body, that gets evald later!!! Somehow!!
             // but DO store it in the heap for safekeeping...
-            ctx.alloc(ScmObj::Func(formal_names, *body))
+            ctx.alloc(ScmObj::Func(formal_names, body))
          } else {
             panic!("Lambda body allows only 1 expression.");
          }
@@ -325,19 +320,20 @@ fn prim_let(
    locals: im::HashMap<String, arena::Index>,
    args: arena::Index,
 ) -> arena::Index {
-   if let &ScmObj::Cons(bindings, body_rest) = ctx.deref_value(args) {
+   if let ScmObj::Cons(bindings, body_rest) = *ctx.deref_value(args) {
       let mut new_bindings = im::HashMap::new();
       let mut cur = bindings;
       loop {
-         if let &ScmObj::Cons(single_binding, rest_bindings) = ctx.deref_value(cur) {
-            if let &ScmObj::Cons(binding_name, value_rest) = ctx.deref_value(single_binding) {
-               if let &ScmObj::Cons(value, null_part) = ctx.deref_value(value_rest) {
-                  if let ScmObj::Null = ctx.deref_value(null_part) {
+         if let ScmObj::Cons(single_binding, rest_bindings) = *ctx.deref_value(cur) {
+            if let ScmObj::Cons(binding_name, value_rest) = *ctx.deref_value(single_binding) {
+               if let ScmObj::Cons(value, null_part) = *ctx.deref_value(value_rest) {
+                  if let ScmObj::Null = *ctx.deref_value(null_part) {
                      // have to mess with the lifetimes a bit to make sure the
                      // deref'd value doesnt live too long.
                      // Rust isnt _that_ smart I guess :( cant write the prettiest code.
+                     // TODO: prettier way to do this?
                      let is_sym = {
-                        if let ScmObj::Symbol(s) = ctx.deref_value(binding_name) {
+                        if let ScmObj::Symbol(ref s) = *ctx.deref_value(binding_name) {
                            Some(s.clone())
                         } else {
                            None
@@ -365,9 +361,9 @@ fn prim_let(
             panic!("Idk what happened here!");
          }
       }
-      if let ScmObj::Cons(body, null_part) = ctx.deref_value(body_rest) {
-         if let ScmObj::Null = ctx.deref_value(*null_part) {
-            ctx.eval_inner(new_bindings.union(locals.clone()), *body)
+      if let ScmObj::Cons(body, null_part) = *ctx.deref_value(body_rest) {
+         if let ScmObj::Null = *ctx.deref_value(null_part) {
+            ctx.eval_inner(new_bindings.union(locals), body)
          } else {
             panic!("Only 1 expression allowed in let binding body.");
          }
@@ -394,8 +390,8 @@ fn prim_print(
    locals: im::HashMap<String, arena::Index>,
    args: arena::Index,
 ) -> arena::Index {
-   if let &ScmObj::Cons(obj, null_part) = ctx.deref_value(args) {
-      if let &ScmObj::Null = ctx.deref_value(null_part) {
+   if let ScmObj::Cons(obj, null_part) = *ctx.deref_value(args) {
+      if let ScmObj::Null = *ctx.deref_value(null_part) {
          let evald = ctx.eval_inner(locals.clone(), obj);
          print_aux(ctx, locals, evald);
       } else {
@@ -434,16 +430,32 @@ fn prim_printcons(
    car: arena::Index,
    cdr: arena::Index,
 ) {
+   // my enum trick to get around some lifetime issues.
+   // as opposed to just matching directly on `ctx.deref_value(..)`.
+   enum Which3 {
+      Cons(arena::Index, arena::Index),
+      Null,
+      None,
+   }
    print_aux(ctx, locals.clone(), car);
    print!(" ");
-   match ctx.deref_value(cdr) {
-      ScmObj::Cons(cadr, cddr) => prim_printcons(ctx, locals, *cadr, *cddr),
+
+   let which = {
+      match *ctx.deref_value(cdr) {
+         ScmObj::Cons(cadr, cddr) => Which3::Cons(cadr, cddr),
+         ScmObj::Null => Which3::Null,
+         _ => Which3::None,
+      }
+   };
+
+   match which {
+      Which3::Cons(cadr, cddr) => prim_printcons(ctx, locals, cadr, cddr),
       // FIXME: THIS IS FUCKING FUCK UGLY!!!!!!!!!!!!!!!
       // DAVIS YOU FUCKER
       // YOU SHOULDNT USE ESCAPE SEQUENCES DAVIS
       // but lifetimes are hard :(
       // FUCK YOU
-      ScmObj::Null => {
+      Which3::Null => {
          // write a backspace ascii code to the formatter
          // because im not smart enough to get around
          // lifetime stuff I guess.

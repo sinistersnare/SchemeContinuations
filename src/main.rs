@@ -131,7 +131,7 @@ impl std::fmt::Debug for ScmObj {
          ScmObj::Bool(true) => write!(f, "#t"),
          ScmObj::Bool(false) => write!(f, "#f"),
          ScmObj::Void => write!(f, "#<void>"),
-         ScmObj::Cons(ref car, ref cdr) => write!(f, "#<cons>"),
+         ScmObj::Cons(..) => write!(f, "#<cons>"),
          ScmObj::Func(..) => write!(f, "#<function>"),
          ScmObj::Other => write!(f, "Other Thing! This shouldnt exist!"),
          // TODO: include prim name?

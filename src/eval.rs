@@ -3,9 +3,8 @@
 use std::collections::HashMap;
 
 use generational_arena as arena;
-use im;
 
-use crate::prims::{self, prim_println};
+use crate::prims::{self, prim_println, PrimFunc};
 use crate::ScmObj;
 
 pub struct Evaluator {
@@ -17,6 +16,12 @@ pub struct Evaluator {
    primitives: HashMap<&'static str, arena::Index>,
    /// global symbols, things that were 'defined'.
    symbols: HashMap<String, arena::Index>,
+}
+
+impl Default for Evaluator {
+   fn default() -> Self {
+      Evaluator::new()
+   }
 }
 
 impl Evaluator {
@@ -36,7 +41,7 @@ impl Evaluator {
       }
    }
 
-   pub fn eval(&mut self, expr: arena::Index) -> () {
+   pub fn eval(&mut self, expr: arena::Index) {
       let evald_val = self.eval_inner(im::HashMap::new(), expr);
       // use the internal printing to do this.
       // but must wrap in a list first:
@@ -50,14 +55,12 @@ impl Evaluator {
       expr: arena::Index,
    ) -> arena::Index {
       let obj_value = self.deref_value(expr);
-      if let ScmObj::Symbol(ref s) = obj_value {
-         self
+      match *obj_value {
+         ScmObj::Symbol(ref s) => self
             .fetch(&mut locals, s)
-            .expect(&*format!("Could not find symbol {:?}!", s))
-      } else if let ScmObj::Cons(car, cdr) = obj_value {
-         self.eval_list(locals, *car, *cdr)
-      } else {
-         expr
+            .expect(&*format!("Could not find symbol {:?}!", s)),
+         ScmObj::Cons(car, cdr) => self.eval_list(locals, car, cdr),
+         _ => expr,
       }
    }
 
@@ -67,15 +70,32 @@ impl Evaluator {
       car: arena::Index,
       cdr: arena::Index,
    ) -> arena::Index {
-      let inner_val = self.eval_inner(locals.clone(), car);
-      let func = self.deref_value(inner_val);
-      if let ScmObj::Primitive(prim_f) = func {
-         // primitives are given their args unevaluated.
-         prim_f(self, locals, cdr)
-      } else if let ScmObj::Func(formals, body) = func {
-         self.eval_func(locals, formals.clone(), *body, cdr)
-      } else {
-         panic!("A callable must be in call position!");
+      // had to do this weirdness to appease the borrow checker,
+      // instead of just directly matching on self.deref_value(..)
+      // TODO: prettier way to do this?
+      enum PrimOrFunc {
+         Prim(PrimFunc),
+         Func(Vec<String>, arena::Index),
+         None,
+      }
+      let call_position_val = self.eval_inner(locals.clone(), car);
+      let fntype = {
+         match self.deref_value(call_position_val) {
+            &ScmObj::Primitive(prim_f) => PrimOrFunc::Prim(prim_f),
+            ScmObj::Func(formals, body) => PrimOrFunc::Func(formals.clone(), *body),
+            _ => PrimOrFunc::None,
+         }
+      };
+
+      match fntype {
+         PrimOrFunc::Prim(prim_f) => {
+            // primitives are given their args unevaluated.
+            prim_f(self, locals, cdr)
+         }
+         PrimOrFunc::Func(formals, body) => self.eval_func(locals, formals, body, cdr),
+         _ => {
+            panic!("A callable must be in call position!");
+         }
       }
    }
 
@@ -92,7 +112,7 @@ impl Evaluator {
       let mut actual_params = im::HashMap::new();
       let mut head = args_list;
       loop {
-         if let &ScmObj::Cons(cur, next) = self.deref_value(head) {
+         if let ScmObj::Cons(cur, next) = *self.deref_value(head) {
             if formal_params.is_empty() {
                panic!("Too many args provided!");
             }
@@ -108,7 +128,7 @@ impl Evaluator {
          panic!("Not enough args provided!");
       }
       // call function!
-      return self.eval_inner(actual_params.clone().union(locals), body);
+      self.eval_inner(actual_params.union(locals), body)
    }
 
    /// search locals, then symbols, then primitives, else return None!
@@ -121,7 +141,7 @@ impl Evaluator {
          .get(name)
          .or_else(|| self.symbols.get(name))
          .or_else(|| self.primitives.get(name))
-         .map(|&idx| idx)
+         .copied()
    }
 
    /// fetch a constant
