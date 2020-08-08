@@ -1,1 +1,1 @@
-((if (not (if #f #f #f)) * +) 2 (+ 1.1 2.9))
+(let ((square (lambda (x) (* x x)))) (square (square 2)))

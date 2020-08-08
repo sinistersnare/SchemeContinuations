@@ -85,8 +85,6 @@ fn exec_string(program: String) {
    }
 }
 
-
-
 pub enum ScmObj {
    /// A number. All numbers in this language
    /// are double precision floating points.
@@ -190,4 +188,11 @@ impl std::fmt::Debug for ScmObj {
          ScmObj::Primitive(_p) => write!(f, "#<primitive>"),
       }
    }
+}
+
+/// in this language, the only falsy value is #f (false).
+/// Everything else is true!
+/// is_truthy_value(&mut ScmObj::Null) ==> true
+pub fn is_truthy_value(val: &mut ScmObj) -> bool {
+   if let ScmObj::Bool(false) = val { false } else { true }
 }
