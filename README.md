@@ -9,6 +9,7 @@ Implementation hints taken from
 [minilisp](https://github.com/rui314/minilisp). Thanks rui314!
 
 TODO:
+* Get `cargo fmt` working?
 * All the TODOs in the code LOL
 * String interning of symbols!!!
 * Replace usage of `panic!(...)` and other possibly panicking things with proper error handling. Things like `if idx_valid { vec[idx] }` can be kept.

@@ -24,9 +24,11 @@ pub fn make_prims(heap: &mut arena::Arena<ScmObj>) -> HashMap<&'static str, aren
    map.insert("if", heap.insert(ScmObj::Primitive(prim_if)));
    map.insert("+", heap.insert(ScmObj::Primitive(prim_plus)));
    map.insert("*", heap.insert(ScmObj::Primitive(prim_mul)));
+   map.insert("cons", heap.insert(ScmObj::Primitive(prim_cons)));
    map.insert("quote", heap.insert(ScmObj::Primitive(prim_quote)));
    map.insert("begin", heap.insert(ScmObj::Primitive(prim_begin)));
    map.insert("not", heap.insert(ScmObj::Primitive(prim_not)));
+   map.insert("define", heap.insert(ScmObj::Primitive(prim_define)));
    map.insert("lambda", heap.insert(ScmObj::Primitive(prim_lambda)));
    // returns a void value, all arguments are ignored and not evaluated.
    map.insert("void", heap.insert(ScmObj::Primitive(|eval, _locals, _args| eval.get_const("void"))));
@@ -40,7 +42,7 @@ fn prim_if(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args:
    if let &ScmObj::Cons(cond_part, then_else_rest) = ctx.deref_value(args) {
       if let &ScmObj::Cons(then_part, else_rest) = ctx.deref_value(then_else_rest) {
          if let &ScmObj::Cons(else_part, null_part) = ctx.deref_value(else_rest) {
-            if let ScmObj::Null = ctx.deref_value(null_part) {
+            if let &ScmObj::Null = ctx.deref_value(null_part) {
                let cond_val = ctx.eval_inner(locals.clone(), cond_part);
                if is_truthy_value(ctx.deref_value(cond_val)) {
                   ctx.eval_inner(locals, then_part)
@@ -116,10 +118,30 @@ fn prim_quote(ctx: &mut Evaluator, _: im::HashMap<String, arena::Index>, args: a
    ctx.cons(quote, end)
 }
 
+fn prim_cons(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+   if let &ScmObj::Cons(car, cdr) = ctx.deref_value(args) {
+      if let &ScmObj::Cons(cadr, cddr) = ctx.deref_value(cdr) {
+         if let &ScmObj::Null = ctx.deref_value(cddr) {
+            let quote = ctx.alloc(ScmObj::Symbol("quote".to_string()));
+            let eval_car = ctx.eval_inner(locals.clone(), car);
+            let eval_cadr = ctx.eval_inner(locals, cadr);
+            let cons = ctx.cons(eval_car, eval_cadr);
+            ctx.cons(quote, cons)
+         } else {
+            panic!("cons only takes 2 args.");
+         }
+      } else {
+         panic!("cons is supposed to take 2 args.");
+      }
+   } else {
+      panic!("Cons not given a list as args.");
+   }
+}
+
 fn prim_void_huh(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
    // this function only allows a 1-length list.
    if let &ScmObj::Cons(car, cdr) = ctx.deref_value(args) {
-      if let ScmObj::Null = ctx.deref_value(cdr) {
+      if let &ScmObj::Null = ctx.deref_value(cdr) {
          let void_val = ctx.eval_inner(locals, car);
          if let ScmObj::Void = ctx.deref_value(void_val) {
             ctx.get_const("true")
@@ -139,9 +161,7 @@ fn prim_void_huh(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>,
 fn prim_begin(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
    let mut latest = args;
    loop {
-      if let ScmObj::Null = ctx.deref_value(latest) {
-         return ctx.get_const("void");
-      } else if let &ScmObj::Cons(car, cdr) = ctx.deref_value(latest) {
+      if let &ScmObj::Cons(car, cdr) = ctx.deref_value(latest) {
          // must replicate the eval_inner due to some lifetime shit.
          if let ScmObj::Null = ctx.deref_value(cdr) {
             return ctx.eval_inner(locals.clone(), car);
@@ -149,6 +169,8 @@ fn prim_begin(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, ar
             ctx.eval_inner(locals.clone(), car);
             latest = cdr;
          }
+      } else if let ScmObj::Null = ctx.deref_value(latest) {
+         return ctx.get_const("void");
       } else {
          panic!("Args must be a proper list!");
       }
@@ -175,6 +197,37 @@ fn prim_not(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args
       }
    } else {
       panic!("Args must be a proper list!");
+   }
+}
+
+// right now only allows the form (define a b) not the function-define style of (define (f a b) body).
+fn prim_define(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+   if let &ScmObj::Cons(name, val_rest) = ctx.deref_value(args) {
+      if let &ScmObj::Cons(val, null_part) = ctx.deref_value(val_rest) {
+         if let ScmObj::Null = ctx.deref_value(null_part) {
+            // stolen from elsewhere
+            let is_sym = {
+               if let ScmObj::Symbol(s) = ctx.deref_value(name) {
+                  Some(s.clone())
+               } else {
+                  None
+               }
+            };
+            if let Some(s) = is_sym {
+               let evald_val = ctx.eval_inner(locals, val);
+               ctx.add_symbol(s, evald_val);
+               ctx.get_const("void")
+            } else {
+               panic!("Define takes a bare symbol as first argument.");
+            }
+         } else {
+            panic!("define only takes exactly 2 arguments");
+         }
+      } else {
+         panic!("Must provide a 2nd argument");
+      }
+   } else {
+      panic!("A list must be given as arguments!");
    }
 }
 
@@ -281,7 +334,8 @@ pub fn prim_println(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Inde
 fn prim_print(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
    if let &ScmObj::Cons(obj, null_part) = ctx.deref_value(args) {
       if let &ScmObj::Null = ctx.deref_value(null_part) {
-         print_aux(ctx, locals, obj);
+         let evald = ctx.eval_inner(locals.clone(), obj);
+         print_aux(ctx, locals, evald);
       } else {
          panic!("Only 1 arg to println allowed");
       }
@@ -292,10 +346,8 @@ fn prim_print(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, ar
 }
 
 // this is the object itself that we are printing, not the arg list we are receiving.
-fn print_aux(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, obj: arena::Index){
-   println!("Evaling::: {:?}", ctx.deref_value(obj));
-   let evald_val = ctx.eval_inner(locals.clone(), obj);
-   match *ctx.deref_value(evald_val) {
+fn print_aux(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, obj: arena::Index) {
+   match *ctx.deref_value(obj) {
       ScmObj::Numeric(n) => print!("{}", n),
       ScmObj::Symbol(ref s) => print!("{}", s),
       ScmObj::Null => print!("'()"),
@@ -316,6 +368,7 @@ fn print_aux(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, obj
 // a helper function for printing lists.
 fn prim_printcons(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, car: arena::Index, cdr: arena::Index) {
    print_aux(ctx, locals.clone(), car);
+   print!(" ");
    match ctx.deref_value(cdr) {
       &ScmObj::Cons(cadr, cddr) => {
          prim_printcons(ctx, locals, cadr, cddr)

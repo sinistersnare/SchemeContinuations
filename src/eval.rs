@@ -15,7 +15,7 @@ pub struct Evaluator {
    pub heap: arena::Arena<ScmObj>,
    /// primitive functions and functionality
    primitives: HashMap<&'static str, arena::Index>,
-   /// global symbols.
+   /// global symbols, things that were 'defined'.
    symbols: HashMap<String, arena::Index>,
 }
 
@@ -111,6 +111,10 @@ impl Evaluator {
    /// derefs a value from our heap to get the scheme value.
    pub fn deref_value(&self, idx: arena::Index) -> &ScmObj {
       self.heap.get(idx).expect("Whoops! Idx not in the Arena!")
+   }
+
+   pub fn add_symbol(&mut self, name: String, value: arena::Index) {
+      self.symbols.insert(name, value);
    }
 
    /// The allocation function of this interpreter.
