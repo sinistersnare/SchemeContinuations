@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use im;
 use generational_arena as arena;
 
-use crate::prims;
+use crate::prims::{self, prim_println};
 use crate::ScmObj;
 
 pub struct Evaluator {
@@ -38,7 +38,10 @@ impl Evaluator {
 
    pub fn eval(&mut self, expr: arena::Index) -> () {
       let evald_val = self.eval_inner(im::HashMap::new(), expr);
-      println!("{:?}", self.deref_value(evald_val));
+      // use the internal printing to do this.
+      // but must wrap in a list first:
+      let wrapped = self.cons(evald_val, self.get_const("null"));
+      prim_println(self, im::HashMap::new(), wrapped);
    }
 
    pub fn eval_inner(&mut self, mut locals: im::HashMap<String, arena::Index>, expr: arena::Index) -> arena::Index {
@@ -54,13 +57,10 @@ impl Evaluator {
 
    fn eval_list(&mut self, locals: im::HashMap<String, arena::Index>, car: arena::Index, cdr: arena::Index) -> arena::Index {
       let inner_val = self.eval_inner(locals.clone(), car);
-      // take the func out of the heap, so we can have ownership.
-      // THIS SEEMS REALLY BAD!
-      // let func = self.heap.remove(inner_val).expect("Idx doesnt exist");
       let func = self.deref_value(inner_val);
-      if let ScmObj::Primitive(pf) = func {
+      if let ScmObj::Primitive(prim_f) = func {
          // primitives are given their args unevaluated.
-         pf(self, locals, cdr)
+         prim_f(self, locals, cdr)
       } else if let ScmObj::Func(formals, body) = func {
          self.eval_func(locals, formals.clone(), *body, cdr)
       } else {
@@ -84,6 +84,7 @@ impl Evaluator {
             break;
          }
       }
+
       if !formal_params.is_empty() {
          panic!("Not enough args provided!");
       }
@@ -107,11 +108,22 @@ impl Evaluator {
       *self.constants.get(name).expect(&*format!("Dont have const of name: {:?}", name))
    }
 
+   /// derefs a value from our heap to get the scheme value.
    pub fn deref_value(&self, idx: arena::Index) -> &ScmObj {
       self.heap.get(idx).expect("Whoops! Idx not in the Arena!")
    }
 
+   /// The allocation function of this interpreter.
+   /// takes an object and puts it on our heap!
    pub fn alloc(&mut self, obj: ScmObj) -> arena::Index {
       self.heap.insert(obj)
+   }
+
+   /// a helper that allocates a cons object for us.
+   /// it may be best to do all allocating in 1 function
+   /// so we can see that it only ever happens when we use 'alloc'.
+   /// but this seemed like a nice shortcut :)
+   pub fn cons(&mut self, car: arena::Index, cdr: arena::Index) -> arena::Index {
+      self.alloc(ScmObj::Cons(car, cdr))
    }
 }

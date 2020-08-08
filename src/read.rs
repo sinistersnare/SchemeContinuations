@@ -81,9 +81,8 @@ impl Parser {
       match next_expr {
          ReadResult::Expression(e) => {
             let quote = evaluator.alloc(ScmObj::Symbol("quote".to_string()));
-            let nil = evaluator.get_const("null");
-            let end = evaluator.alloc(ScmObj::Cons(e, nil));
-            evaluator.alloc(ScmObj::Cons(quote, end))
+            let wrapped = evaluator.cons(e, evaluator.get_const("null"));
+            evaluator.cons(quote, wrapped)
          },
          ReadResult::Dot => panic!("Illegal use of `.`"),
          ReadResult::CloseParen => panic!("Illegal use of `)`"),
@@ -162,8 +161,6 @@ impl Parser {
       }
    }
 
-   /// TODO: THIS SHOULD TAKE A FULL EVALUATOR SO WE CAN ACCESS THE CONSTS!!!!!!
-   ///       INSTEAD OF REALLOCING THEM ALL THE TIME!!!
    /// TODO: i dont think this is a great function to make public.
    /// Maybe the public API  should be an iterator of
    /// Result<Expression> and use that one publicly.

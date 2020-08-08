@@ -32,6 +32,7 @@ pub fn make_prims(heap: &mut arena::Arena<ScmObj>) -> HashMap<&'static str, aren
    map.insert("void", heap.insert(ScmObj::Primitive(|eval, _locals, _args| eval.get_const("void"))));
    map.insert("void?", heap.insert(ScmObj::Primitive(prim_void_huh)));
    map.insert("let", heap.insert(ScmObj::Primitive(prim_let)));
+   map.insert("println", heap.insert(ScmObj::Primitive(prim_println)));
    map
 }
 
@@ -111,8 +112,8 @@ fn prim_quote(ctx: &mut Evaluator, _: im::HashMap<String, arena::Index>, args: a
    // rust isnt smart enough to let me put these together!
    let quote = ctx.alloc(ScmObj::Symbol("quote".to_string()));
    let nil = ctx.get_const("null");
-   let end = ctx.alloc(ScmObj::Cons(args, nil));
-   ctx.alloc(ScmObj::Cons(quote, end))
+   let end = ctx.cons(args, nil);
+   ctx.cons(quote, end)
 }
 
 fn prim_void_huh(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
@@ -270,3 +271,73 @@ fn prim_let(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args
       panic!("Args must be a list.");
    }
 }
+
+pub fn prim_println(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+   prim_print(ctx, locals, args);
+   println!();
+   ctx.get_const("void")
+}
+
+fn prim_print(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+   if let &ScmObj::Cons(obj, null_part) = ctx.deref_value(args) {
+      if let &ScmObj::Null = ctx.deref_value(null_part) {
+         print_aux(ctx, locals, obj);
+      } else {
+         panic!("Only 1 arg to println allowed");
+      }
+   } else {
+      panic!("println not given a list as an argument???");
+   }
+   ctx.get_const("void")
+}
+
+// this is the object itself that we are printing, not the arg list we are receiving.
+fn print_aux(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, obj: arena::Index){
+   println!("Evaling::: {:?}", ctx.deref_value(obj));
+   let evald_val = ctx.eval_inner(locals.clone(), obj);
+   match *ctx.deref_value(evald_val) {
+      ScmObj::Numeric(n) => print!("{}", n),
+      ScmObj::Symbol(ref s) => print!("{}", s),
+      ScmObj::Null => print!("'()"),
+      ScmObj::Bool(true) => print!("#t"),
+      ScmObj::Bool(false) => print!("#f"),
+      ScmObj::Void => print!("#<void>"),
+      ScmObj::Cons(car, cdr) => {
+         print!("(");
+         prim_printcons(ctx, locals, car, cdr)
+      },
+      ScmObj::Func(..) => print!("#<function>"),
+      ScmObj::Other => print!("Other Thing! This shouldnt exist!"),
+      // TODO: include prim name somehow?
+      ScmObj::Primitive(_p) => print!("#<primitive>"),
+   }
+}
+
+// a helper function for printing lists.
+fn prim_printcons(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, car: arena::Index, cdr: arena::Index) {
+   print_aux(ctx, locals.clone(), car);
+   match ctx.deref_value(cdr) {
+      &ScmObj::Cons(cadr, cddr) => {
+         prim_printcons(ctx, locals, cadr, cddr)
+      },
+      // FIXME: THIS IS FUCKING FUCK UGLY!!!!!!!!!!!!!!!
+      // DAVIS YOU FUCKER
+      // YOU SHOULDNT USE ESCAPE SEQUENCES DAVIS
+      // but lifetimes are hard :(
+      // FUCK YOU
+      &ScmObj::Null => {
+         // write a backspace ascii code to the formatter
+         // because im not smart enough to get around
+         // lifetime stuff I guess.
+         print!("{}", (8u8 as char));
+         print!(")")},
+      _ => {
+         // improper list ending.
+         print!(". ");
+         print_aux(ctx, locals, cdr);
+         print!(")")
+      }
+   }
+}
+
+
