@@ -1,12 +1,14 @@
 //! A Parser of Scheme types.
 //! `Expr` is the AST type here that will be executed.
 
-use crate::ScmObj;
+use generational_arena as arena;
 
-/// TODO: not a 'rust result', needa rename.
+use crate::ScmObj;
+use crate::eval::Evaluator;
+
 #[derive(Debug)]
 pub enum ReadResult {
-   Expression(ScmObj),
+   Expression(arena::Index),
    CloseParen,
    Dot,
    Error(&'static str),
@@ -54,7 +56,7 @@ impl Parser {
       }
    }
 
-   fn read_symbol(&mut self, mut symstr: String) -> ScmObj {
+   fn read_symbol(&mut self, mut symstr: String, evaluator: &mut Evaluator) -> arena::Index {
       // TODO we should intern these symbols? I think so.
       //    the interner should be a member of Self
       loop {
@@ -64,22 +66,24 @@ impl Parser {
                self.take(); // take it after we know we want it.
                symstr.push(peeked);
             } else {
-               return ScmObj::Symbol(symstr);
+               return evaluator.alloc(ScmObj::Symbol(symstr));
             }
          } else {
-            return ScmObj::Symbol(symstr);
+            return evaluator.alloc(ScmObj::Symbol(symstr));
          }
       }
    }
 
    /// already read the 'expr and returns (quote expr)
-   fn read_quote(&mut self) -> ScmObj {
+   fn read_quote(&mut self, evaluator: &mut Evaluator) -> arena::Index {
       // read in the next expr and wrap it in `(quote <expr>)`.
-      let next_expr = self.read_expr();
+      let next_expr = self.read_expr(evaluator);
       match next_expr {
          ReadResult::Expression(e) => {
-            ScmObj::Cons(Box::new(ScmObj::Symbol("quote".into())),
-                         Box::new(e))
+            let quote = evaluator.alloc(ScmObj::Symbol("quote".to_string()));
+            let nil = evaluator.get_const("null");
+            let end = evaluator.alloc(ScmObj::Cons(e, nil));
+            evaluator.alloc(ScmObj::Cons(quote, end))
          },
          ReadResult::Dot => panic!("Illegal use of `.`"),
          ReadResult::CloseParen => panic!("Illegal use of `)`"),
@@ -94,7 +98,7 @@ impl Parser {
    // like if it saw a `-` followed by a number,
    // or a `.` followed by a number.
    // or a number followed by a number.
-   fn read_number(&mut self, mut numstr: String) -> ScmObj {
+   fn read_number(&mut self, mut numstr: String, evaluator: &mut Evaluator) -> arena::Index {
       while let Some(c) = self.peek() {
          if c.is_digit(10) || c == '.' {
             // take it when we know its a digit we want.
@@ -107,7 +111,7 @@ impl Parser {
          }
       }
       // TODO: proper error handing.
-      ScmObj::Numeric(numstr.parse().expect("Wasnt able to parse as a f64."))
+      evaluator.alloc(ScmObj::Numeric(numstr.parse().expect("Wasnt able to parse as a f64.")))
    }
 
 	/// already got the open paren before this was called.
@@ -115,7 +119,7 @@ impl Parser {
 	/// a dot, followed by a final element, then a CloseParen.
 	///    (this forms an improper list).
 	/// or a close paren, ending the list.
-   fn read_list(&mut self) -> ScmObj {
+   fn read_list(&mut self, evaluator: &mut Evaluator) -> arena::Index {
       if let Some(')') = self.peek() {
       	// I _THINK_ this is a hack. IDK THO LOL.
       	// like, idk if Null should be something we actually look for.
@@ -126,19 +130,20 @@ impl Parser {
          // im pretty sure its illegal, but... couldnt think of a
          // good way to just do '() and not ().
          self.take();
-         return ScmObj::Null;
+         return evaluator.alloc(ScmObj::Null);
       }
 
-      let cur = self.read_expr();
+      let cur = self.read_expr(evaluator);
       match cur {
          ReadResult::CloseParen => {
-            ScmObj::Null
+            evaluator.alloc(ScmObj::Null)
          },
          ReadResult::Expression(e) => {
-            ScmObj::Cons(Box::new(e), Box::new(self.read_list()))
+            let list = ScmObj::Cons(e, self.read_list(evaluator));
+            evaluator.alloc(list)
          },
          ReadResult::Dot => {
-            let improper_final = self.read_expr();
+            let improper_final = self.read_expr(evaluator);
             let close_paren = self.take();
             if let Some(')') = close_paren {
                match improper_final {
@@ -157,10 +162,12 @@ impl Parser {
       }
    }
 
+   /// TODO: THIS SHOULD TAKE A FULL EVALUATOR SO WE CAN ACCESS THE CONSTS!!!!!!
+   ///       INSTEAD OF REALLOCING THEM ALL THE TIME!!!
    /// TODO: i dont think this is a great function to make public.
    /// Maybe the public API  should be an iterator of
    /// Result<Expression> and use that one publicly.
-   pub fn read_expr(&mut self) -> ReadResult {
+   pub fn read_expr(&mut self, evaluator: &mut Evaluator) -> ReadResult {
       loop {
          let took = self.take();
          if let None = took {
@@ -173,7 +180,7 @@ impl Parser {
             // comment
             ';' => { self.skip_line(); },
             '(' => {
-               return ReadResult::Expression(self.read_list());
+               return ReadResult::Expression(self.read_list(evaluator));
             },
             ')' => {
                return ReadResult::CloseParen;
@@ -182,7 +189,7 @@ impl Parser {
             '0'..='9' => {
                let mut numstr = String::with_capacity(16);
                numstr.push(c);
-               return ReadResult::Expression(self.read_number(numstr));
+               return ReadResult::Expression(self.read_number(numstr, evaluator));
             },
             // a number can be started with a `-` to signify a negative number.
             // or it can be referencing a function called `-`.
@@ -192,15 +199,15 @@ impl Parser {
                   if peeked.is_digit(10) || peeked == '.' {
                      let mut numstr = String::with_capacity(16);
                      numstr.push(c);
-                     return ReadResult::Expression(self.read_number(numstr));
+                     return ReadResult::Expression(self.read_number(numstr, evaluator));
                   } else {
                      let mut symstr = String::with_capacity(16);
                      symstr.push(c);
-                     return ReadResult::Expression(self.read_symbol(symstr));
+                     return ReadResult::Expression(self.read_symbol(symstr, evaluator));
                   }
                } else {
                   // fast path!
-                  return ReadResult::Expression(ScmObj::Symbol("-".to_string()));
+                  return ReadResult::Expression(evaluator.alloc(ScmObj::Symbol("-".to_string())));
                }
             },
             // can also start a number just with a `.` i.e. `.5` == `0.5`.
@@ -211,7 +218,7 @@ impl Parser {
                   if peeked.is_digit(10) {
                      let mut numstr = String::with_capacity(16);
                      numstr.push(c);
-                     return ReadResult::Expression(self.read_number(numstr));
+                     return ReadResult::Expression(self.read_number(numstr, evaluator));
                   } else {
                      return ReadResult::Dot;
                   }
@@ -220,7 +227,7 @@ impl Parser {
                }
             },
             '\'' => {
-               return ReadResult::Expression(self.read_quote());
+               return ReadResult::Expression(self.read_quote(evaluator));
             },
             // TODO: this is ugly AF lol.
             c@'<'..='Z' | c@'a'..='z' | c@'~'
@@ -229,22 +236,22 @@ impl Parser {
                | c@'+' | c@':' | c@'/' => {
                let mut symstr = String::with_capacity(16);
                symstr.push(c);
-               return ReadResult::Expression(self.read_symbol(symstr));
+               return ReadResult::Expression(self.read_symbol(symstr, evaluator));
             },
             // symbols cant start with '#', so check for #t or #f.
             '#' => {
                let next = self.take();
                if let Some('f') = next {
-                  return ReadResult::Expression(ScmObj::Bool(false));
+                  return ReadResult::Expression(evaluator.get_const("false"));
                } else if let Some('t') = next {
-                  return ReadResult::Expression(ScmObj::Bool(true));
+                  return ReadResult::Expression(evaluator.get_const("true"));
                } else {
                   panic!("Only t/f allowed after #. Given {:?}", next);
                }
             }
             _ => {
                // TODO: maybe a ReadResult::Error would be cool?
-               return ReadResult::Expression(ScmObj::Symbol("TODO_ELSE".into()));
+               return ReadResult::Expression(evaluator.alloc(ScmObj::Symbol("TODO_ELSE".into())));
                // return ReadResult::Expression(Expr::Symbol("TODO_ELSE!".to_string()));
             },
          }

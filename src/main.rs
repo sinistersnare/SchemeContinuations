@@ -8,6 +8,8 @@
 use std::env;
 use std::fs;
 
+use generational_arena as arena;
+
 pub mod read;
 pub mod eval;
 pub mod prims;
@@ -31,11 +33,11 @@ fn start_repl() {
 
    loop {
       print!("> ");
-      let _ = stdout().flush();
+      stdout().flush().expect("Flushed poorly.");
       stdin().read_line(&mut input).expect("Did not enter a full string.");
       let mut parser = Parser::new(input.trim().to_string());
       loop {
-         let expr = parser.read_expr();
+         let expr = parser.read_expr(&mut evaluator);
          match expr {
             ReadResult::Expression(parsed) => {
                evaluator.eval(parsed);
@@ -64,7 +66,7 @@ fn exec_string(program: String) {
    let mut evaluator = Evaluator::new();
 
    loop {
-      let expr = parser.read_expr();
+      let expr = parser.read_expr(&mut evaluator);
       match expr {
          ReadResult::Expression(parsed) => {
             evaluator.eval(parsed);
@@ -100,7 +102,7 @@ pub enum ScmObj {
    /// TODO: is it OK that these are in boxes?
    ///      I think these need to be allocated in the
    ///      languages heap, not the Rust heap.
-   Cons(Box<ScmObj>, Box<ScmObj>),
+   Cons(arena::Index, arena::Index),
    /// used to signal an empty list. represented by '()
    /// which is (quote ()).
    Null,
@@ -110,63 +112,11 @@ pub enum ScmObj {
    /// A primitive function, implemented by the interpreter.
    Primitive(PrimFunc),
    /// A scheme function. Contains a list of formal params, and a body (which is a ScmObj).
-   Func(Vec<String>, Box<ScmObj>),
+   Func(Vec<String>, arena::Index),
    /// Probably shouldnt be a thing :p.
    Other,
    // unimplemented types.
    // Closure, Int, Str, Vector, Hash, Set
-}
-
-fn print_cons(f: &mut std::fmt::Formatter<'_>, car: &ScmObj, cdr: &ScmObj) -> std::fmt::Result {
-   // TODO: Display formatting used here even though
-   //       this function is used in Debug formatter.
-   //       there is no diff between the two atm,
-   //       so this is kinda a hacky solution.
-   //       if debug formatting of Lists changes,
-   //       we will have to deal with that
-   write!(f, "{} ", car)?;
-   match cdr {
-      ScmObj::Cons(cadr, cddr) => {
-         print_cons(f, cadr, cddr)
-      },
-      // FIXME: THIS IS FUCKING FUCK UGLY!!!!!!!!!!!!!!!
-      // DAVIS YOU FUCKER
-      // YOU SHOULDNT USE ESCAPE SEQUENCES DAVIS
-      // but lifetimes are hard :(
-      // FUCK YOU
-      ScmObj::Null => {
-         // write a backspace ascii code to the formatter
-         // because im not smart enough to get around
-         // lifetime stuff I guess.
-         write!(f, "{}", (8u8 as char))?;
-         write!(f, ")")},
-      _ => {
-         write!(f, ". ")?;
-         write!(f, "{}", cdr)?;
-         write!(f, ")")
-      }
-   }
-}
-
-impl std::fmt::Display for ScmObj {
-   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      match *self {
-         ScmObj::Numeric(n) => write!(f, "{}", n),
-         ScmObj::Symbol(ref s) => write!(f, "{}", s),
-         ScmObj::Null => write!(f, "()"),
-         ScmObj::Bool(true) => write!(f, "#t"),
-         ScmObj::Bool(false) => write!(f, "#f"),
-         ScmObj::Void => write!(f, "#<void>"),
-         ScmObj::Cons(ref car, ref cdr) => {
-            print!("(");
-            print_cons(f, &*car, &*cdr)
-         },
-         ScmObj::Func(..) => write!(f, "#<function>"),
-         ScmObj::Other => write!(f, "Other Thing! This shouldnt exist!"),
-         // TODO: include prim name?
-         ScmObj::Primitive(_p) => write!(f, "#<primitive>"),
-      }
-   }
 }
 
 impl std::fmt::Debug for ScmObj {
@@ -178,10 +128,7 @@ impl std::fmt::Debug for ScmObj {
          ScmObj::Bool(true) => write!(f, "#t"),
          ScmObj::Bool(false) => write!(f, "#f"),
          ScmObj::Void => write!(f, "#<void>"),
-         ScmObj::Cons(ref car, ref cdr) => {
-            write!(f, "(")?;
-            print_cons(f, &*car, &*cdr)
-         },
+         ScmObj::Cons(ref car, ref cdr) => write!(f, "#<cons>"),
          ScmObj::Func(..) => write!(f, "#<function>"),
          ScmObj::Other => write!(f, "Other Thing! This shouldnt exist!"),
          // TODO: include prim name?
@@ -193,6 +140,6 @@ impl std::fmt::Debug for ScmObj {
 /// in this language, the only falsy value is #f (false).
 /// Everything else is true!
 /// is_truthy_value(&mut ScmObj::Null) ==> true
-pub fn is_truthy_value(val: &mut ScmObj) -> bool {
+pub fn is_truthy_value(val: &ScmObj) -> bool {
    if let ScmObj::Bool(false) = val { false } else { true }
 }
