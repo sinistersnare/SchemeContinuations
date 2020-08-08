@@ -437,13 +437,13 @@ fn prim_printcons(
    print_aux(ctx, locals.clone(), car);
    print!(" ");
    match ctx.deref_value(cdr) {
-      &ScmObj::Cons(cadr, cddr) => prim_printcons(ctx, locals, cadr, cddr),
+      ScmObj::Cons(cadr, cddr) => prim_printcons(ctx, locals, *cadr, *cddr),
       // FIXME: THIS IS FUCKING FUCK UGLY!!!!!!!!!!!!!!!
       // DAVIS YOU FUCKER
       // YOU SHOULDNT USE ESCAPE SEQUENCES DAVIS
       // but lifetimes are hard :(
       // FUCK YOU
-      &ScmObj::Null => {
+      ScmObj::Null => {
          // write a backspace ascii code to the formatter
          // because im not smart enough to get around
          // lifetime stuff I guess.

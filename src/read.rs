@@ -37,7 +37,7 @@ impl Parser {
 
    fn peek(&mut self) -> Option<char> {
       // theres def a better way to get a char from this.
-      self.text.chars().peekable().peek().map(|&c| c)
+      self.text.chars().peekable().peek().copied()
    }
 
    fn skip_line(&mut self) {
@@ -172,7 +172,7 @@ impl Parser {
    pub fn read_expr(&mut self, evaluator: &mut Evaluator) -> ReadResult {
       loop {
          let took = self.take();
-         if let None = took {
+         if took.is_none() {
             return ReadResult::EOF;
          }
          let c = took.unwrap();

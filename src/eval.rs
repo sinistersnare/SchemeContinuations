@@ -79,14 +79,16 @@ impl Evaluator {
       }
    }
 
+   // evals a scheme-level function that is in call position
+   // so ((lambda (x y) (+ x y)) 1 2) where formal_params are `[x, y]`, body is `(+ x y)`,
+   // and the args list is `(cons 1 (cons 2 '()))`
    fn eval_func(
       &mut self,
       locals: im::HashMap<String, arena::Index>,
-      formals: Vec<String>,
+      mut formal_params: Vec<String>,
       body: arena::Index,
       args_list: arena::Index,
    ) -> arena::Index {
-      let mut formal_params = formals.clone();
       let mut actual_params = im::HashMap::new();
       let mut head = args_list;
       loop {
