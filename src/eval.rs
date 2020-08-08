@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use im;
 use generational_arena as arena;
+use im;
 
 use crate::prims::{self, prim_println};
 use crate::ScmObj;
@@ -44,10 +44,16 @@ impl Evaluator {
       prim_println(self, im::HashMap::new(), wrapped);
    }
 
-   pub fn eval_inner(&mut self, mut locals: im::HashMap<String, arena::Index>, expr: arena::Index) -> arena::Index {
+   pub fn eval_inner(
+      &mut self,
+      mut locals: im::HashMap<String, arena::Index>,
+      expr: arena::Index,
+   ) -> arena::Index {
       let obj_value = self.deref_value(expr);
       if let ScmObj::Symbol(ref s) = obj_value {
-         self.fetch(&mut locals, s).expect(&*format!("Could not find symbol {:?}!", s))
+         self
+            .fetch(&mut locals, s)
+            .expect(&*format!("Could not find symbol {:?}!", s))
       } else if let ScmObj::Cons(car, cdr) = obj_value {
          self.eval_list(locals, *car, *cdr)
       } else {
@@ -55,7 +61,12 @@ impl Evaluator {
       }
    }
 
-   fn eval_list(&mut self, locals: im::HashMap<String, arena::Index>, car: arena::Index, cdr: arena::Index) -> arena::Index {
+   fn eval_list(
+      &mut self,
+      locals: im::HashMap<String, arena::Index>,
+      car: arena::Index,
+      cdr: arena::Index,
+   ) -> arena::Index {
       let inner_val = self.eval_inner(locals.clone(), car);
       let func = self.deref_value(inner_val);
       if let ScmObj::Primitive(prim_f) = func {
@@ -68,7 +79,13 @@ impl Evaluator {
       }
    }
 
-   fn eval_func(&mut self, locals: im::HashMap<String, arena::Index>, formals: Vec<String>, body: arena::Index, args_list: arena::Index) -> arena::Index {
+   fn eval_func(
+      &mut self,
+      locals: im::HashMap<String, arena::Index>,
+      formals: Vec<String>,
+      body: arena::Index,
+      args_list: arena::Index,
+   ) -> arena::Index {
       let mut formal_params = formals.clone();
       let mut actual_params = im::HashMap::new();
       let mut head = args_list;
@@ -93,11 +110,16 @@ impl Evaluator {
    }
 
    /// search locals, then symbols, then primitives, else return None!
-   fn fetch(&self, locals: &mut im::HashMap<String, arena::Index>, name: &str) -> Option<arena::Index> {
-      locals.get(name)
-            .or_else(|| self.symbols.get(name))
-            .or_else(|| self.primitives.get(name))
-            .map(|&idx| idx)
+   fn fetch(
+      &self,
+      locals: &mut im::HashMap<String, arena::Index>,
+      name: &str,
+   ) -> Option<arena::Index> {
+      locals
+         .get(name)
+         .or_else(|| self.symbols.get(name))
+         .or_else(|| self.primitives.get(name))
+         .map(|&idx| idx)
    }
 
    /// fetch a constant
@@ -105,7 +127,10 @@ impl Evaluator {
    //       Like constants dont need to be GCd, so it shouldnt take up heap space
    //       but we would probably need a custom GC impl, rather than using an off-the-shelf arena.
    pub fn get_const(&self, name: &'static str) -> arena::Index {
-      *self.constants.get(name).expect(&*format!("Dont have const of name: {:?}", name))
+      *self
+         .constants
+         .get(name)
+         .expect(&*format!("Dont have const of name: {:?}", name))
    }
 
    /// derefs a value from our heap to get the scheme value.

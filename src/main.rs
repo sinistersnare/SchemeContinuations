@@ -10,13 +10,13 @@ use std::fs;
 
 use generational_arena as arena;
 
-pub mod read;
 pub mod eval;
 pub mod prims;
+pub mod read;
 
-use read::{ReadResult, Parser};
-use prims::PrimFunc;
 use eval::Evaluator;
+use prims::PrimFunc;
+use read::{Parser, ReadResult};
 
 fn main() {
    if let Some(filename) = env::args().nth(1) {
@@ -34,7 +34,9 @@ fn start_repl() {
    loop {
       print!("> ");
       stdout().flush().expect("Flushed poorly.");
-      stdin().read_line(&mut input).expect("Did not enter a full string.");
+      stdin()
+         .read_line(&mut input)
+         .expect("Did not enter a full string.");
       let mut parser = Parser::new(input.trim().to_string());
       loop {
          let expr = parser.read_expr(&mut evaluator);
@@ -42,20 +44,21 @@ fn start_repl() {
             ReadResult::Expression(parsed) => {
                evaluator.eval(parsed);
                input.clear();
-            },
+            }
             ReadResult::EOF => {
                break;
-            },
+            }
             ReadResult::Dot => {
                panic!("Unexpected dot `.`!");
-            },
+            }
             ReadResult::CloseParen => {
                panic!("Unbalanced close paren!");
-            },
+            }
             ReadResult::Error(e) => {
                panic!("Got an error while parsing an exp: {:?}", e);
-            },
-         }}
+            }
+         }
+      }
    }
 }
 
@@ -70,19 +73,19 @@ fn exec_string(program: String) {
       match expr {
          ReadResult::Expression(parsed) => {
             evaluator.eval(parsed);
-         },
+         }
          ReadResult::CloseParen => {
             panic!("Unbalanced close paren!");
-         },
+         }
          ReadResult::Dot => {
             panic!("Unexpected dot `.`!");
-         },
+         }
          ReadResult::Error(e) => {
             panic!("Got an error while parsing an exp: {:?}", e);
-         },
+         }
          ReadResult::EOF => {
             return;
-         },
+         }
       }
    }
 }
@@ -141,5 +144,9 @@ impl std::fmt::Debug for ScmObj {
 /// Everything else is true!
 /// is_truthy_value(&mut ScmObj::Null) ==> true
 pub fn is_truthy_value(val: &ScmObj) -> bool {
-   if let ScmObj::Bool(false) = val { false } else { true }
+   if let ScmObj::Bool(false) = val {
+      false
+   } else {
+      true
+   }
 }

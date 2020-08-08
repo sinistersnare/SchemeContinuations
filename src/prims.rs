@@ -9,13 +9,14 @@
 
 use std::collections::HashMap;
 
-use im;
 use generational_arena as arena;
+use im;
 
-use crate::eval::{Evaluator};
-use crate::{ScmObj, is_truthy_value};
+use crate::eval::Evaluator;
+use crate::{is_truthy_value, ScmObj};
 
-pub type PrimFunc = fn(&mut Evaluator, im::HashMap<String, arena::Index>, arena::Index) -> arena::Index;
+pub type PrimFunc =
+   fn(&mut Evaluator, im::HashMap<String, arena::Index>, arena::Index) -> arena::Index;
 
 pub fn make_prims(heap: &mut arena::Arena<ScmObj>) -> HashMap<&'static str, arena::Index> {
    // TODO: Use a perfect hash function map! Or Something like that!
@@ -31,14 +32,23 @@ pub fn make_prims(heap: &mut arena::Arena<ScmObj>) -> HashMap<&'static str, aren
    map.insert("define", heap.insert(ScmObj::Primitive(prim_define)));
    map.insert("lambda", heap.insert(ScmObj::Primitive(prim_lambda)));
    // returns a void value, all arguments are ignored and not evaluated.
-   map.insert("void", heap.insert(ScmObj::Primitive(|eval, _locals, _args| eval.get_const("void"))));
+   map.insert(
+      "void",
+      heap.insert(ScmObj::Primitive(|eval, _locals, _args| {
+         eval.get_const("void")
+      })),
+   );
    map.insert("void?", heap.insert(ScmObj::Primitive(prim_void_huh)));
    map.insert("let", heap.insert(ScmObj::Primitive(prim_let)));
    map.insert("println", heap.insert(ScmObj::Primitive(prim_println)));
    map
 }
 
-fn prim_if(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_if(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    if let &ScmObj::Cons(cond_part, then_else_rest) = ctx.deref_value(args) {
       if let &ScmObj::Cons(then_part, else_rest) = ctx.deref_value(then_else_rest) {
          if let &ScmObj::Cons(else_part, null_part) = ctx.deref_value(else_rest) {
@@ -65,7 +75,11 @@ fn prim_if(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args:
 
 /// Takes any number of arguments in a proper list, and returns the sum of them.
 /// if any of the args are not numbers, then this will fail.
-fn prim_plus(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_plus(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    let mut cur = args;
    let mut sum: f64 = 0.0;
    loop {
@@ -78,16 +92,22 @@ fn prim_plus(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, arg
             } else {
                panic!("Only numbers can be added!");
             }
-         },
-         ScmObj::Null => { return ctx.alloc(ScmObj::Numeric(sum)); },
-         _ => { panic!("Only numbers can be added!")}
+         }
+         ScmObj::Null => {
+            return ctx.alloc(ScmObj::Numeric(sum));
+         }
+         _ => panic!("Only numbers can be added!"),
       }
    }
 }
 
 /// Takes any number of arguments in a proper list, and returns the product of them.
 /// if any of the args are not numbers, then this will fail.
-fn prim_mul(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_mul(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    let mut cur = args;
    let mut sum: f64 = 1.0;
    loop {
@@ -100,9 +120,11 @@ fn prim_mul(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args
             } else {
                panic!("Only numbers can be multiplied!");
             }
-         },
-         ScmObj::Null => { return ctx.alloc(ScmObj::Numeric(sum)); },
-         _ => { panic!("Only numbers can be multiplied!")}
+         }
+         ScmObj::Null => {
+            return ctx.alloc(ScmObj::Numeric(sum));
+         }
+         _ => panic!("Only numbers can be multiplied!"),
       }
    }
 }
@@ -110,7 +132,11 @@ fn prim_mul(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args
 /// (quote 5) => (quote 5). Doesnt do anything!
 /// but (eval (quote 5)) does something. Hmmm how does that work!
 /// I think eval checks if its quoted and just removes that?
-fn prim_quote(ctx: &mut Evaluator, _: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_quote(
+   ctx: &mut Evaluator,
+   _: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    // rust isnt smart enough to let me put these together!
    let quote = ctx.alloc(ScmObj::Symbol("quote".to_string()));
    let nil = ctx.get_const("null");
@@ -118,7 +144,11 @@ fn prim_quote(ctx: &mut Evaluator, _: im::HashMap<String, arena::Index>, args: a
    ctx.cons(quote, end)
 }
 
-fn prim_cons(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_cons(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    if let &ScmObj::Cons(car, cdr) = ctx.deref_value(args) {
       if let &ScmObj::Cons(cadr, cddr) = ctx.deref_value(cdr) {
          if let &ScmObj::Null = ctx.deref_value(cddr) {
@@ -138,7 +168,11 @@ fn prim_cons(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, arg
    }
 }
 
-fn prim_void_huh(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_void_huh(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    // this function only allows a 1-length list.
    if let &ScmObj::Cons(car, cdr) = ctx.deref_value(args) {
       if let &ScmObj::Null = ctx.deref_value(cdr) {
@@ -158,7 +192,11 @@ fn prim_void_huh(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>,
 
 /// evaluates each argument, and returns the last one.
 /// if no args are provided, void is returned. This differs from racket semantics.
-fn prim_begin(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_begin(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    let mut latest = args;
    loop {
       if let &ScmObj::Cons(car, cdr) = ctx.deref_value(latest) {
@@ -178,7 +216,11 @@ fn prim_begin(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, ar
 }
 
 /// TODO: this can be impld as a regular function, not a primitive.
-fn prim_not(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_not(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    if let ScmObj::Cons(car, cdr) = ctx.deref_value(args) {
       if let ScmObj::Null = ctx.deref_value(*cdr) {
          let bool_val = ctx.eval_inner(locals, *car);
@@ -201,7 +243,11 @@ fn prim_not(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args
 }
 
 // right now only allows the form (define a b) not the function-define style of (define (f a b) body).
-fn prim_define(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_define(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    if let &ScmObj::Cons(name, val_rest) = ctx.deref_value(args) {
       if let &ScmObj::Cons(val, null_part) = ctx.deref_value(val_rest) {
          if let ScmObj::Null = ctx.deref_value(null_part) {
@@ -232,7 +278,11 @@ fn prim_define(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, a
 }
 
 /// Returns a lambda object, doesnt use locals for anything, I dont think it should.
-fn prim_lambda(ctx: &mut Evaluator, _: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_lambda(
+   ctx: &mut Evaluator,
+   _: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    if let ScmObj::Cons(formals_obj, body_rest) = ctx.deref_value(args) {
       // add all the formals into a vec
       let mut formal_names = Vec::new();
@@ -270,7 +320,11 @@ fn prim_lambda(ctx: &mut Evaluator, _: im::HashMap<String, arena::Index>, args: 
 
 /// takes something of form (let ((a 1) (c 2)) body)
 /// and evaluates body after adding a and c to the local environment.
-fn prim_let(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_let(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    if let &ScmObj::Cons(bindings, body_rest) = ctx.deref_value(args) {
       let mut new_bindings = im::HashMap::new();
       let mut cur = bindings;
@@ -325,13 +379,21 @@ fn prim_let(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args
    }
 }
 
-pub fn prim_println(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+pub fn prim_println(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    prim_print(ctx, locals, args);
    println!();
    ctx.get_const("void")
 }
 
-fn prim_print(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, args: arena::Index) -> arena::Index {
+fn prim_print(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   args: arena::Index,
+) -> arena::Index {
    if let &ScmObj::Cons(obj, null_part) = ctx.deref_value(args) {
       if let &ScmObj::Null = ctx.deref_value(null_part) {
          let evald = ctx.eval_inner(locals.clone(), obj);
@@ -357,7 +419,7 @@ fn print_aux(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, obj
       ScmObj::Cons(car, cdr) => {
          print!("(");
          prim_printcons(ctx, locals, car, cdr)
-      },
+      }
       ScmObj::Func(..) => print!("#<function>"),
       ScmObj::Other => print!("Other Thing! This shouldnt exist!"),
       // TODO: include prim name somehow?
@@ -366,13 +428,16 @@ fn print_aux(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, obj
 }
 
 // a helper function for printing lists.
-fn prim_printcons(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>, car: arena::Index, cdr: arena::Index) {
+fn prim_printcons(
+   ctx: &mut Evaluator,
+   locals: im::HashMap<String, arena::Index>,
+   car: arena::Index,
+   cdr: arena::Index,
+) {
    print_aux(ctx, locals.clone(), car);
    print!(" ");
    match ctx.deref_value(cdr) {
-      &ScmObj::Cons(cadr, cddr) => {
-         prim_printcons(ctx, locals, cadr, cddr)
-      },
+      &ScmObj::Cons(cadr, cddr) => prim_printcons(ctx, locals, cadr, cddr),
       // FIXME: THIS IS FUCKING FUCK UGLY!!!!!!!!!!!!!!!
       // DAVIS YOU FUCKER
       // YOU SHOULDNT USE ESCAPE SEQUENCES DAVIS
@@ -383,7 +448,8 @@ fn prim_printcons(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>
          // because im not smart enough to get around
          // lifetime stuff I guess.
          print!("{}", (8u8 as char));
-         print!(")")},
+         print!(")")
+      }
       _ => {
          // improper list ending.
          print!(". ");
@@ -392,5 +458,3 @@ fn prim_printcons(ctx: &mut Evaluator, locals: im::HashMap<String, arena::Index>
       }
    }
 }
-
-
