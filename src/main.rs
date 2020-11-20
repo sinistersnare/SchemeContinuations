@@ -15,10 +15,10 @@ use std::fs;
 use combine::Parser;
 
 pub mod common;
-pub mod read;
 pub mod eval;
-use crate::read::expr;
+pub mod read;
 use crate::eval::evaluate;
+use crate::read::expr;
 
 fn main() {
    if let Some(filename) = env::args().nth(1) {
@@ -43,7 +43,7 @@ fn start_repl() {
          Ok((sexpr, _)) => {
             let (final_val, _fin_state, _store) = evaluate(sexpr);
             println!("{:?}", final_val);
-         },
+         }
          Err(e) => println!("Error Parsing: {:?}", e),
       };
       input.clear();
@@ -56,7 +56,7 @@ fn exec_string(program: String) {
       Ok((sexpr, _)) => {
          let (final_val, _fin_state, _store) = evaluate(sexpr);
          println!("{:?}", final_val);
-      },
+      }
       Err(e) => println!("Error Parsing: {:?}", e),
    };
 }

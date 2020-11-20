@@ -1,23 +1,26 @@
 //! A Parser of Scheme types.
 //! `SExpr` is the AST type here that will be executed.
 
-
+use combine::error::ParseError;
 use combine::parser::char::{char, spaces};
-use combine::{satisfy, between, choice, many1, parser, sep_by, Parser};
-use combine::error::{ParseError};
-use combine::stream::{Stream};
+use combine::stream::Stream;
+use combine::{between, choice, many1, parser, satisfy, sep_by, Parser};
 
-use crate::common::{SExpr};
+use crate::common::SExpr;
 
-fn expr_<Input>() -> impl Parser<Input, Output=SExpr>
-                     where Input: Stream<Token = char>,
-                           Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+fn expr_<Input>() -> impl Parser<Input, Output = SExpr>
+where
+   Input: Stream<Token = char>,
+   Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-
-   let atom_char = || satisfy(|ch: char| matches!(ch,
+   let atom_char = || {
+      satisfy(|ch: char| {
+         matches!(ch,
       '0'..='9' | '<'..='Z' | 'a'..='z'
       | '~' | '!' | '$' | '%' | '^' | '&'
-      | '*' | '_' | '+' | ':' | '/' | '-' | 'λ'));
+      | '*' | '_' | '+' | ':' | '/' | '-' | 'λ')
+      })
+   };
 
    // TODO better parsing of atom,
    // some characters only allowed at start like #
@@ -30,13 +33,12 @@ fn expr_<Input>() -> impl Parser<Input, Output=SExpr>
    let lex_char = |c| char(c).skip(skip_spaces());
 
    let space_separated_exprs = sep_by(expr(), spaces());
-   let list = between(lex_char('(') , lex_char(')'), space_separated_exprs);
+   let list = between(lex_char('('), lex_char(')'), space_separated_exprs);
 
-   choice((atom.map(SExpr::Atom),
-           list.map(SExpr::List),)).skip(skip_spaces())
+   choice((atom.map(SExpr::Atom), list.map(SExpr::List))).skip(skip_spaces())
 }
 
-parser!{
+parser! {
    pub fn expr[Input]()(Input) -> SExpr
    where [Input: Stream<Token = char>]
    {
