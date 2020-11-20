@@ -3,17 +3,15 @@
 Made this to try different continuation implementations,
 hope I get to do that! :)
 
-Lots of function semantics, among other things, taken from racket docs
-
-Implementation hints taken from
-[minilisp](https://github.com/rui314/minilisp). Thanks rui314!
+I am using semantics I defined [here](https://github.com/sinistersnare/aams/blob/master/latex/formalism.pdf).
+There is also an interpreter in Racket in that repo, among other things.
+This one is very...typed... compared to that one, wanted to see
+how well my formalization worked type-wise.
 
 TODO:
-* All the TODOs in the code LOL
-* String interning of symbols!!!
-* Replace usage of `panic!(...)` and other possibly panicking things with proper error handling. Things like `if idx_valid { vec[idx] }` can be kept.
-* a lot of pub functions should probably just be `pub(crate)`?
-* Symbol interning with some rust string-intern crate like Lasso.
+* All TODOs obviously
+* Is it possible to use &str instead of so many owned values? I wonder how hard that would be...
+	* Would require `combine` to return `&str` instead of `String`. Need to look into that!
 
 ## Continuations ##
 
@@ -23,18 +21,24 @@ used like a function.
 
 I implement a simple type of continuation in
 [SinScheme](https://github.com/sinistersnare/SinScheme).
+But thats a compiler, and by translating to CPS
 
 It's a bit more complicated for this interpreter.
-Im hoping to try different implementations of continuations here.
-From TODO: put papers here.
+Im hoping to implement different types of continuations here.
+The most basic is 'one-shot' continuations, which are pretty inefficient.
+I want to get to implementing delimited continuations if I can.
+
+TODO: put papers here.
+
+Also I will be writing a blog post on continuations soon, so check my blog out!
 
 ## Usage ##
 
-`cargo run` will run a REPL! Quit with Ctrl-C, Ctrl-D doesnt work.
+`cargo run` will run a REPL! Quit with Ctrl-C, Ctrl-D is just end-of-line.
 
 `cargo run -- file.scm` will run `file.scm`.
 
-LICENSE:
+## LICENSE: ##
 
 MIT LICENSE. I'm happy if you just say 'hey Sinistersnare nice code!'.
 But you don't have to.

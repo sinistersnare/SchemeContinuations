@@ -1,180 +1,267 @@
 //! The evaluator of scheme ASTs.
 
-use std::collections::HashMap;
+use im;
 
-use generational_arena as arena;
+use crate::common::{PRIMS, State, SExpr, Env, Val, Var, Addr, Store, Kont, Time, Prim, Closure};
 
-use crate::prims::{self, prim_println, PrimFunc};
-use crate::ScmObj;
-
-pub struct Evaluator {
-   constants: HashMap<&'static str, arena::Index>,
-   // things like GC, symbol table, etc. here.
-   /// the heap used at runtime for the interpreter.
-   pub heap: arena::Arena<ScmObj>,
-   /// primitive functions and functionality
-   primitives: HashMap<&'static str, arena::Index>,
-   /// global symbols, things that were 'defined'.
-   symbols: HashMap<String, arena::Index>,
+fn inject(ctrl: SExpr) -> State {
+   // Time 0 was for creation of the state, we start on 1.
+   // (becuase mt is addr 0, we need to start with 1)
+   State::new(ctrl, Env(im::HashMap::new()), Addr(0), Time(1))
 }
 
-impl Default for Evaluator {
-   fn default() -> Self {
-      Evaluator::new()
-   }
-}
-
-impl Evaluator {
-   pub fn new() -> Evaluator {
-      let mut heap = arena::Arena::new();
-      let mut constants = HashMap::new();
-      constants.insert("null", heap.insert(ScmObj::Null));
-      constants.insert("true", heap.insert(ScmObj::Bool(true)));
-      constants.insert("false", heap.insert(ScmObj::Bool(false)));
-      constants.insert("void", heap.insert(ScmObj::Void));
-      let primitives = prims::make_prims(&mut heap); // just for code conciseness
-      Evaluator {
-         primitives,
-         constants,
-         symbols: HashMap::new(),
-         heap,
-      }
-   }
-
-   pub fn eval(&mut self, expr: arena::Index) {
-      let evald_val = self.eval_inner(im::HashMap::new(), expr);
-      // use the internal printing to do this.
-      // but must wrap in a list first:
-      let wrapped = self.cons(evald_val, self.get_const("null"));
-      prim_println(self, im::HashMap::new(), wrapped);
-   }
-
-   pub fn eval_inner(
-      &mut self,
-      mut locals: im::HashMap<String, arena::Index>,
-      expr: arena::Index,
-   ) -> arena::Index {
-      let obj_value = self.deref_value(expr);
-      match *obj_value {
-         ScmObj::Symbol(ref s) => self
-            .fetch(&mut locals, s)
-            .expect(&*format!("Could not find symbol {:?}!", s)),
-         ScmObj::Cons(car, cdr) => self.eval_list(locals, car, cdr),
-         _ => expr,
-      }
-   }
-
-   fn eval_list(
-      &mut self,
-      locals: im::HashMap<String, arena::Index>,
-      car: arena::Index,
-      cdr: arena::Index,
-   ) -> arena::Index {
-      // had to do this weirdness to appease the borrow checker,
-      // instead of just directly matching on self.deref_value(..)
-      // TODO: prettier way to do this?
-      enum PrimOrFunc {
-         Prim(PrimFunc),
-         Func(Vec<String>, arena::Index),
-         None,
-      }
-      let call_position_val = self.eval_inner(locals.clone(), car);
-      let fntype = {
-         match self.deref_value(call_position_val) {
-            &ScmObj::Primitive(prim_f) => PrimOrFunc::Prim(prim_f),
-            ScmObj::Func(formals, body) => PrimOrFunc::Func(formals.clone(), *body),
-            _ => PrimOrFunc::None,
+fn is_atomic(ctrl: &SExpr) -> bool {
+   match ctrl {
+      SExpr::List(ref list) => {
+         if let Some(_) = matches_lambda_expr(list) {
+            true
+         } else {
+            false
          }
+      },
+      SExpr::Atom(_) => true
+   }
+}
+
+fn matches_number(str: &str) -> Option<i64> {
+   str.parse::<i64>().ok()
+}
+
+fn matches_boolean(str: &str) -> Option<bool> {
+   // because we cant parse #t/#f rn, just use true/false.
+   if str == "true" { Some(true) }
+   else if str == "false" { Some(false) }
+   else { None }
+}
+
+fn matches_lambda_expr(list: &Vec<SExpr>) -> Option<(Vec<Var>, SExpr)> {
+   if list.len() == 3 && (list[0] == SExpr::Atom("lambda".to_string())
+                         || list[0] == SExpr::Atom("λ".to_string())) {
+      if let SExpr::List(ref args) = list[1] {
+         let mut argvec = Vec::with_capacity(args.len());
+         for arg_sexpr in args {
+            match arg_sexpr {
+               SExpr::List(_) => {panic!("Unexpected list in argument position");},
+               SExpr::Atom(ref arg) => {argvec.push(Var(arg.clone()));}
+            };
+         }
+         let body = list[2].clone();
+         Some((argvec, body))
+      } else {
+         panic!("We Dont support vararg lambda at this time");
+      }
+   } else {
+      None
+   }
+}
+
+fn matches_if_expr(list: &Vec<SExpr>) -> Option<(SExpr, SExpr, SExpr)> {
+   if list.len() == 4 && list[0] == SExpr::Atom("if".to_string()) {
+      Some((list[1].clone(), list[2].clone(), list[3].clone()))
+   } else {
+      None
+   }
+}
+
+fn matches_let_expr(list: &Vec<SExpr>) -> Option<(Var, SExpr, SExpr)> {
+   if list.len() == 3 && list[0] == SExpr::Atom("let".to_string()) {
+      match list[1] {
+         SExpr::List(ref binding) => {
+            let x = match &binding[0] {
+               SExpr::List(_) => {panic!("Unexpected list in binding-name position");},
+               SExpr::Atom(v) => v.clone(),
+            };
+            Some((Var(x), binding[1].clone(), list[2].clone()))
+         },
+         SExpr::Atom(ref _bindlist) => {
+            panic!("Let takes a binding list, not a single arg");
+         }
+      }
+   } else {
+      None
+   }
+}
+
+fn matches_prim_expr(list: &Vec<SExpr>) -> Option<(Prim, SExpr, Vec<SExpr>)> {
+   if list.len() >= 3 && list[0] == SExpr::Atom("prim".to_string()) {
+      let primname = match list[1] {
+         SExpr::List(_) => { panic!("Unexpected list in prim-name position"); },
+         SExpr::Atom(ref name) => name.clone(),
       };
+      let (left, right) = list.split_at(3);
+      let arg0 = left[2].clone();
+      Some((Prim(primname), arg0, right.to_vec()))
+   }  else {
+      None
+   }
+}
 
-      match fntype {
-         PrimOrFunc::Prim(prim_f) => {
-            // primitives are given their args unevaluated.
-            prim_f(self, locals, cdr)
+fn matches_callcc_expr(list: &Vec<SExpr>) -> Option<SExpr> {
+   if list.len() == 2 && list[0] == SExpr::Atom("call/cc".to_string()) {
+      Some(list[1].clone())
+   } else {
+      None
+   }
+}
+
+fn apply_prim(Prim(op): Prim, args: &[Val]) -> SExpr {
+   // idfk why this buffoonery is needed.
+   let f = *PRIMS.get::<str>(&op).expect("Prim doesnt exist!");
+   f(args)
+}
+
+fn atomic_eval(ctrl: &SExpr, env: &Env, store: &Store) -> Val {
+   match ctrl {
+      SExpr::List(ref list) => {
+         if let Some((args, body)) = matches_lambda_expr(list) {
+            Val::Closure(Closure(args, body, env.clone()))
+         } else {
+            panic!("Not given an atomic value, given some list.");
          }
-         PrimOrFunc::Func(formals, body) => self.eval_func(locals, formals, body, cdr),
-         _ => {
-            panic!("A callable must be in call position!");
+      },
+      SExpr::Atom(ref atom) => {
+         if let Some(n) = matches_number(atom) { Val::Number(n) }
+         else if let Some(b) = matches_boolean(atom) { Val::Boolean(b) }
+         else {
+            store.get(env.get(Var(atom.clone()))
+                         .expect("Atom not in env"))
+                 .expect("Atom not in store")
          }
       }
    }
+}
 
-   // evals a scheme-level function that is in call position
-   // so ((lambda (x y) (+ x y)) 1 2) where formal_params are `[x, y]`, body is `(+ x y)`,
-   // and the args list is `(cons 1 (cons 2 '()))`
-   fn eval_func(
-      &mut self,
-      locals: im::HashMap<String, arena::Index>,
-      mut formal_params: Vec<String>,
-      body: arena::Index,
-      args_list: arena::Index,
-   ) -> arena::Index {
-      let mut actual_params = im::HashMap::new();
-      let mut head = args_list;
-      loop {
-         if let ScmObj::Cons(cur, next) = *self.deref_value(head) {
-            if formal_params.is_empty() {
-               panic!("Too many args provided!");
+fn step_atomic(st: &State, store: &mut Store) -> State {
+   let State{ctrl, env, kont_addr, ..} = st.clone();
+   let val = atomic_eval(&ctrl, &env, &store);
+   let kontval = store.get(kont_addr).expect("Dont Got Kont");
+   if let Val::Kont(kont) = kontval {
+      match kont {
+         Kont::Emptyk => st.clone(), // fixpoint!
+         Kont::Ifk(et, ef, ifenv, next_kaddr) => {
+            if val == Val::Boolean(false) {
+               State::new(ef, ifenv, next_kaddr, st.tick(1))
+            } else {
+               State::new(et, ifenv, next_kaddr, st.tick(1))
             }
-            let val = self.eval_inner(locals.clone(), cur);
-            actual_params.insert(formal_params.remove(0), val);
-            head = next;
-         } else if let ScmObj::Null = self.deref_value(head) {
-            break;
+         },
+         Kont::Letk(x, eb, letenv, next_kaddr) => {
+            let vaddr = store.add_to_store(val, st);
+            State::new(eb, letenv.insert(x, vaddr), next_kaddr, st.tick(1))
+         },
+         Kont::Primk(op, mut done, todo, primenv, next_kaddr) => {
+            if todo.is_empty() {
+               done.push(val);
+               let ae = apply_prim(op, &done);
+               State::new(ae, primenv, next_kaddr, st.tick(1))
+            } else {
+               done.push(val);
+               let (head, tail) = todo.split_first().unwrap();
+               let new_kont = Kont::Primk(op, done, tail.to_vec(), primenv.clone(), next_kaddr);
+               let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
+               State::new(head.clone(), primenv.clone(), next_kaddr, st.tick(1))
+            }
+         },
+         Kont::Callcck(next_kaddr) => {
+            if let Val::Closure(Closure(params, body, cloenv)) = val {
+               if params.len() != 1 { panic!("Calcc lambda only takes 1 argument!");}
+               State::new(body, cloenv.insert(params[0].clone(), next_kaddr.clone()),
+                          next_kaddr.clone(), st.tick(1))
+            } else {
+               panic!("Callcc only works with lambdas right now! TODO: (call/cc k) support!");
+            }
          }
+         Kont::Appk(mut done, todo, appenv, next_kaddr) => {
+            if todo.is_empty() {
+               done.push(val);
+               if let (Val::Closure(Closure(params, body, cloenv)), args)
+                     = done.split_first().expect("Bad App") {
+                  if params.len() != args.len() { panic!("arg # mismatch.");}
+                  let mut newenv = cloenv.clone();
+                  for (i, (param, arg)) in params.iter().zip(args.iter()).enumerate() {
+                     // BIG PROBLEM!
+                     // 1) These would get allocated the same addess, because
+                     //    the timestamp doesnt change between allocations... duh
+                     // Maybe dont use `addr = curtime`? Think!
+                     // later:
+                     // This solution is _not scientifically kosher!_
+                     // consult smarter people for advice.
+                     let param_addr = store.add_to_store_offset(arg.clone(), st, i as u64);
+                     newenv = newenv.insert(param.clone(), param_addr.clone());
+                  }
+                  State::new(body.clone(), newenv, next_kaddr, st.tick(1 + (params.len() as u64)))
+               } else if let (k@Val::Kont(_), args) = done.split_first().expect("Bad CC App") {
+                  if args.len() != 1 { panic!("applying a kont only takes 1 argument.");}
+
+                  // replace the current continuation with the stored one.
+                  let new_kaddr = store.add_to_store(k.clone(), st);
+                  State::new(ctrl, appenv.clone(), new_kaddr, st.tick(1))
+               } else {
+                  panic!("Closure wasnt head of application");
+               }
+            } else {
+               done.push(val);
+               let (head, tail) = todo.split_first().unwrap();
+               let new_kont = Kont::Appk(done, tail.to_vec(), appenv.clone(), next_kaddr);
+               let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
+               State::new(head.clone(), appenv.clone(), next_kaddr, st.tick(1))
+            }
+         },
       }
+   } else {
+      panic!("kont_addr not a kont addr!");
+   }
+}
 
-      if !formal_params.is_empty() {
-         panic!("Not enough args provided!");
+fn step(st: &State, store: &mut Store) -> State {
+   let State{ctrl, env, kont_addr, ..} = st.clone();
+   if is_atomic(&ctrl) {
+      step_atomic(st, store)
+   } else {
+      match ctrl {
+         SExpr::List(ref list) => {
+            if let Some((ec,  et, ef)) = matches_if_expr(list) {
+               let new_kont = Kont::Ifk(et, ef, env.clone(), kont_addr.clone());
+               let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
+               State::new(ec.clone(), env.clone(), next_kaddr, st.tick(1))
+            } else if let Some((x, ex, eb)) = matches_let_expr(list) {
+               let new_kont = Kont::Letk(x, eb, env.clone(), kont_addr.clone());
+               let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
+               State::new(ex.clone(), env.clone(), next_kaddr, st.tick(1))
+            } else if let Some((primname, arg0, args)) = matches_prim_expr(list) {
+               let new_kont = Kont::Primk(primname, Vec::with_capacity(args.len() + 1), args,
+                                          env.clone(), kont_addr.clone());
+               let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
+               State::new(arg0, env.clone(), next_kaddr, st.tick(1))
+            } else if let Some(e) = matches_callcc_expr(list) {
+               let new_kont = Kont::Callcck(kont_addr);
+               let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
+               State::new(e, env.clone(), next_kaddr, st.tick(1))
+            } else { // application case
+               let (func, args) = list.split_first().expect("Given Empty List");
+               let new_kont = Kont::Appk(Vec::with_capacity(list.len()), args.to_vec(),
+                                         env.clone(), kont_addr.clone());
+               let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
+               State::new(func.clone(), env.clone(), next_kaddr, st.tick(1))
+            }
+         },
+         SExpr::Atom(ref _atom) => { panic!("Was not handled by atomic case??"); }
       }
-      // call function!
-      self.eval_inner(actual_params.union(locals), body)
    }
+}
 
-   /// search locals, then symbols, then primitives, else return None!
-   fn fetch(
-      &self,
-      locals: &mut im::HashMap<String, arena::Index>,
-      name: &str,
-   ) -> Option<arena::Index> {
-      locals
-         .get(name)
-         .or_else(|| self.symbols.get(name))
-         .or_else(|| self.primitives.get(name))
-         .copied()
-   }
+pub fn evaluate(ctrl: SExpr) -> (Val, State, Store) {
+   // initially the store only has the Empty continuation
+   let mut inner = std::collections::HashMap::new();
+   inner.insert(Addr(0), Val::Kont(Kont::Emptyk));
+   let mut store = Store(inner);
 
-   /// fetch a constant
-   /// TODO: this is using the same heap as everything else, it should prob be its own thing??
-   //       Like constants dont need to be GCd, so it shouldnt take up heap space
-   //       but we would probably need a custom GC impl, rather than using an off-the-shelf arena.
-   pub fn get_const(&self, name: &'static str) -> arena::Index {
-      *self
-         .constants
-         .get(name)
-         .expect(&*format!("Dont have const of name: {:?}", name))
+   let mut st0 = inject(ctrl);
+   let mut stepped = step(&st0, &mut store);
+   while st0 != stepped {
+      st0 = stepped;
+      stepped = step(&st0, &mut store);
    }
-
-   /// derefs a value from our heap to get the scheme value.
-   pub fn deref_value(&self, idx: arena::Index) -> &ScmObj {
-      self.heap.get(idx).expect("Whoops! Idx not in the Arena!")
-   }
-
-   pub fn add_symbol(&mut self, name: String, value: arena::Index) {
-      self.symbols.insert(name, value);
-   }
-
-   /// The allocation function of this interpreter.
-   /// takes an object and puts it on our heap!
-   pub fn alloc(&mut self, obj: ScmObj) -> arena::Index {
-      self.heap.insert(obj)
-   }
-
-   /// a helper that allocates a cons object for us.
-   /// it may be best to do all allocating in 1 function
-   /// so we can see that it only ever happens when we use 'alloc'.
-   /// but this seemed like a nice shortcut :)
-   pub fn cons(&mut self, car: arena::Index, cdr: arena::Index) -> arena::Index {
-      self.alloc(ScmObj::Cons(car, cdr))
-   }
+   let final_value = atomic_eval(&stepped.ctrl, &stepped.env, &store);
+   (final_value, stepped, store.clone())
 }
