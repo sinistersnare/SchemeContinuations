@@ -14,13 +14,10 @@ fn expr_<Input>() -> impl Parser<Input, Output=SExpr>
                            Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
 
-   let atom_char = || satisfy(|ch: char| match ch {
+   let atom_char = || satisfy(|ch: char| matches!(ch,
       '0'..='9' | '<'..='Z' | 'a'..='z'
-            | '~' | '!' | '$' | '%' | '^' | '&'
-            | '*' | '_' | '+' | ':' | '/' | '-' | 'λ'
-        => true,
-      _ => false,
-   });
+      | '~' | '!' | '$' | '%' | '^' | '&'
+      | '*' | '_' | '+' | ':' | '/' | '-' | 'λ'));
 
    // TODO better parsing of atom,
    // some characters only allowed at start like #

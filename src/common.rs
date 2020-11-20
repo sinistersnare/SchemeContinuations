@@ -1,6 +1,4 @@
 
-use im;
-
 use std::fmt;
 use std::collections::HashMap;
 
@@ -132,7 +130,7 @@ fn prim_add(args: &[Val]) -> SExpr {
 			panic!("Not given a number to add!");
 		}
 	}
-	return SExpr::Atom(format!("{}", ret));
+	SExpr::Atom(format!("{}", ret))
 }
 
 lazy_static! {

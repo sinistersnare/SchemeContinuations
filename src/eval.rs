@@ -1,7 +1,5 @@
 //! The evaluator of scheme ASTs.
 
-use im;
-
 use crate::common::{PRIMS, State, SExpr, Env, Val, Var, Addr, Store, Kont, Time, Prim, Closure};
 
 fn inject(ctrl: SExpr) -> State {
@@ -13,11 +11,7 @@ fn inject(ctrl: SExpr) -> State {
 fn is_atomic(ctrl: &SExpr) -> bool {
    match ctrl {
       SExpr::List(ref list) => {
-         if let Some(_) = matches_lambda_expr(list) {
-            true
-         } else {
-            false
-         }
+         matches!(matches_lambda_expr(list), Some(_))
       },
       SExpr::Atom(_) => true
    }
@@ -34,7 +28,7 @@ fn matches_boolean(str: &str) -> Option<bool> {
    else { None }
 }
 
-fn matches_lambda_expr(list: &Vec<SExpr>) -> Option<(Vec<Var>, SExpr)> {
+fn matches_lambda_expr(list: &[SExpr]) -> Option<(Vec<Var>, SExpr)> {
    if list.len() == 3 && (list[0] == SExpr::Atom("lambda".to_string())
                          || list[0] == SExpr::Atom("λ".to_string())) {
       if let SExpr::List(ref args) = list[1] {
@@ -55,7 +49,7 @@ fn matches_lambda_expr(list: &Vec<SExpr>) -> Option<(Vec<Var>, SExpr)> {
    }
 }
 
-fn matches_if_expr(list: &Vec<SExpr>) -> Option<(SExpr, SExpr, SExpr)> {
+fn matches_if_expr(list: &[SExpr]) -> Option<(SExpr, SExpr, SExpr)> {
    if list.len() == 4 && list[0] == SExpr::Atom("if".to_string()) {
       Some((list[1].clone(), list[2].clone(), list[3].clone()))
    } else {
@@ -63,7 +57,7 @@ fn matches_if_expr(list: &Vec<SExpr>) -> Option<(SExpr, SExpr, SExpr)> {
    }
 }
 
-fn matches_let_expr(list: &Vec<SExpr>) -> Option<(Var, SExpr, SExpr)> {
+fn matches_let_expr(list: &[SExpr]) -> Option<(Var, SExpr, SExpr)> {
    if list.len() == 3 && list[0] == SExpr::Atom("let".to_string()) {
       match list[1] {
          SExpr::List(ref binding) => {
@@ -82,7 +76,7 @@ fn matches_let_expr(list: &Vec<SExpr>) -> Option<(Var, SExpr, SExpr)> {
    }
 }
 
-fn matches_prim_expr(list: &Vec<SExpr>) -> Option<(Prim, SExpr, Vec<SExpr>)> {
+fn matches_prim_expr(list: &[SExpr]) -> Option<(Prim, SExpr, Vec<SExpr>)> {
    if list.len() >= 3 && list[0] == SExpr::Atom("prim".to_string()) {
       let primname = match list[1] {
          SExpr::List(_) => { panic!("Unexpected list in prim-name position"); },
@@ -96,7 +90,7 @@ fn matches_prim_expr(list: &Vec<SExpr>) -> Option<(Prim, SExpr, Vec<SExpr>)> {
    }
 }
 
-fn matches_callcc_expr(list: &Vec<SExpr>) -> Option<SExpr> {
+fn matches_callcc_expr(list: &[SExpr]) -> Option<SExpr> {
    if list.len() == 2 && list[0] == SExpr::Atom("call/cc".to_string()) {
       Some(list[1].clone())
    } else {
@@ -159,14 +153,14 @@ fn step_atomic(st: &State, store: &mut Store) -> State {
                let (head, tail) = todo.split_first().unwrap();
                let new_kont = Kont::Primk(op, done, tail.to_vec(), primenv.clone(), next_kaddr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-               State::new(head.clone(), primenv.clone(), next_kaddr, st.tick(1))
+               State::new(head.clone(), primenv, next_kaddr, st.tick(1))
             }
          },
          Kont::Callcck(next_kaddr) => {
             if let Val::Closure(Closure(params, body, cloenv)) = val {
                if params.len() != 1 { panic!("Calcc lambda only takes 1 argument!");}
                State::new(body, cloenv.insert(params[0].clone(), next_kaddr.clone()),
-                          next_kaddr.clone(), st.tick(1))
+                          next_kaddr, st.tick(1))
             } else {
                panic!("Callcc only works with lambdas right now! TODO: (call/cc k) support!");
             }
@@ -195,7 +189,7 @@ fn step_atomic(st: &State, store: &mut Store) -> State {
 
                   // replace the current continuation with the stored one.
                   let new_kaddr = store.add_to_store(k.clone(), st);
-                  State::new(ctrl, appenv.clone(), new_kaddr, st.tick(1))
+                  State::new(ctrl, appenv, new_kaddr, st.tick(1))
                } else {
                   panic!("Closure wasnt head of application");
                }
@@ -204,7 +198,7 @@ fn step_atomic(st: &State, store: &mut Store) -> State {
                let (head, tail) = todo.split_first().unwrap();
                let new_kont = Kont::Appk(done, tail.to_vec(), appenv.clone(), next_kaddr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-               State::new(head.clone(), appenv.clone(), next_kaddr, st.tick(1))
+               State::new(head.clone(), appenv, next_kaddr, st.tick(1))
             }
          },
       }
@@ -221,28 +215,28 @@ fn step(st: &State, store: &mut Store) -> State {
       match ctrl {
          SExpr::List(ref list) => {
             if let Some((ec,  et, ef)) = matches_if_expr(list) {
-               let new_kont = Kont::Ifk(et, ef, env.clone(), kont_addr.clone());
+               let new_kont = Kont::Ifk(et, ef, env.clone(), kont_addr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-               State::new(ec.clone(), env.clone(), next_kaddr, st.tick(1))
+               State::new(ec, env, next_kaddr, st.tick(1))
             } else if let Some((x, ex, eb)) = matches_let_expr(list) {
-               let new_kont = Kont::Letk(x, eb, env.clone(), kont_addr.clone());
+               let new_kont = Kont::Letk(x, eb, env.clone(), kont_addr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-               State::new(ex.clone(), env.clone(), next_kaddr, st.tick(1))
+               State::new(ex, env, next_kaddr, st.tick(1))
             } else if let Some((primname, arg0, args)) = matches_prim_expr(list) {
                let new_kont = Kont::Primk(primname, Vec::with_capacity(args.len() + 1), args,
-                                          env.clone(), kont_addr.clone());
+                                          env.clone(), kont_addr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-               State::new(arg0, env.clone(), next_kaddr, st.tick(1))
+               State::new(arg0, env, next_kaddr, st.tick(1))
             } else if let Some(e) = matches_callcc_expr(list) {
                let new_kont = Kont::Callcck(kont_addr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-               State::new(e, env.clone(), next_kaddr, st.tick(1))
+               State::new(e, env, next_kaddr, st.tick(1))
             } else { // application case
                let (func, args) = list.split_first().expect("Given Empty List");
                let new_kont = Kont::Appk(Vec::with_capacity(list.len()), args.to_vec(),
-                                         env.clone(), kont_addr.clone());
+                                         env.clone(), kont_addr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-               State::new(func.clone(), env.clone(), next_kaddr, st.tick(1))
+               State::new(func.clone(), env, next_kaddr, st.tick(1))
             }
          },
          SExpr::Atom(ref _atom) => { panic!("Was not handled by atomic case??"); }
@@ -263,5 +257,5 @@ pub fn evaluate(ctrl: SExpr) -> (Val, State, Store) {
       stepped = step(&st0, &mut store);
    }
    let final_value = atomic_eval(&stepped.ctrl, &stepped.env, &store);
-   (final_value, stepped, store.clone())
+   (final_value, stepped, store)
 }
