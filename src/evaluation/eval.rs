@@ -7,8 +7,7 @@ use crate::common::{State, SExprState, ValState, Closure, Kont,
                   Prim, SExpr, Store, Val, Var, CloType,
                   Alloc};
 
-use crate::eval::val_step;
-use crate::prims::{apply_prim,};
+use crate::prims::{apply_prim};
 use crate::common::{matches_number, matches_boolean};
 
 
@@ -98,12 +97,12 @@ pub fn expr_step(st: &SExprState, store: &mut Store) -> State {
       ctrl,
       env,
       kont_addr,
-      time
+      ..
    } = st.clone();
    if is_atomic(&ctrl) {
       let val = atomic_eval(st, store);
-      let val_state = ValState::new(val, env, kont_addr, time);
-      val_step(&val_state, store)
+      let val_state = ValState::new(val, env, kont_addr, st.tick(1));
+      State::Apply(val_state)
    } else {
       match ctrl {
          SExpr::List(ref list) => {

@@ -119,7 +119,9 @@ impl Alloc for State {
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
 pub struct Env(pub im::HashMap<Var, Addr>);
-#[derive(Debug, Clone)]
+
+/// Store isnt clonable, its global!
+#[derive(Debug)]
 pub struct Store(pub std::collections::HashMap<Addr, Val>);
 
 impl Env {
