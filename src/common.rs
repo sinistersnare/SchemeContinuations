@@ -62,9 +62,9 @@ pub enum Kont {
    If(SExpr, SExpr, Env, Addr),
    Let(Vec<Var>, Vec<Val>, Vec<SExpr>, SExpr, Env, Addr),
    Callcc(Addr),
-   Set(Var, Addr),
+   Set(Var, Env, Addr),
    Prim(Prim, Vec<Val>, Vec<SExpr>, Env, Addr),
-   ApplyPrim(Prim, Addr),
+   ApplyPrim(Prim, Env, Addr),
    ApplyList(Option<Box<Val>>, SExpr, Env, Addr),
    App(Vec<Val>, Vec<SExpr>, Env, Addr),
 }

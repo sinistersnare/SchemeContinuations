@@ -64,13 +64,13 @@ fn handle_prim_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
 }
 
 fn handle_apply_prim_kont(k: Kont, st: &ValState) -> State {
-   let ValState { ctrl: val, env, .. } = st.clone();
-   if let Kont::ApplyPrim(op, next_kaddr) = k {
+   let ValState { ctrl: val, .. } = st.clone();
+   if let Kont::ApplyPrim(op, aprimenv, next_kaddr) = k {
       if !val_is_list(&val) {
          panic!("Apply not given a list.");
       }
       let val = apply_prim(op, &scm_list_to_vals(val));
-      State::Apply(ValState::new(val, env, next_kaddr, st.tick(1)))
+      State::Apply(ValState::new(val, aprimenv, next_kaddr, st.tick(1)))
    } else {
       panic!("Given Wrong Kontinuation");
    }
@@ -106,14 +106,14 @@ fn handle_callcc_kont(k: Kont, st: &ValState) -> State {
 }
 
 fn handle_set_bang_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
-   let ValState { ctrl: val, env, .. } = st.clone();
-   if let Kont::Set(var, next_kaddr) = k {
-      let addr = match env.get(var.clone()) {
+   let ValState { ctrl: val, .. } = st.clone();
+   if let Kont::Set(var, setenv, next_kaddr) = k {
+      let addr = match setenv.get(var.clone()) {
          Some(v) => v,
          None => panic!("{:?} was not defined.", var),
       };
       store.set(addr, val);
-      State::Apply(ValState::new(Val::Void, env, next_kaddr, st.tick(1)))
+      State::Apply(ValState::new(Val::Void, setenv, next_kaddr, st.tick(1)))
    } else {
       panic!("Given Wrong Kontinuation");
    }

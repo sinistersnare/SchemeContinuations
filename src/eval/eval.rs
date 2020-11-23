@@ -132,7 +132,7 @@ pub fn eval_step(st: &SExprState, store: &mut Store) -> State {
             } else if let Some((prim, args)) = matches_prim_expr(list) {
                handle_prim_expr(prim, args, st, store)
             } else if let Some((prim, listexpr)) = matches_apply_prim_expr(list) {
-               let new_kont = Kont::ApplyPrim(prim, kont_addr);
+               let new_kont = Kont::ApplyPrim(prim, env.clone(), kont_addr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
                State::Eval(SExprState::new(listexpr, env, next_kaddr, st.tick(1)))
             } else if let Some(e) = matches_callcc_expr(list) {
@@ -140,7 +140,7 @@ pub fn eval_step(st: &SExprState, store: &mut Store) -> State {
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
                State::Eval(SExprState::new(e, env, next_kaddr, st.tick(1)))
             } else if let Some((var, e)) = matches_setbang_expr(list) {
-               let new_kont = Kont::Set(var, kont_addr);
+               let new_kont = Kont::Set(var, env.clone(), kont_addr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
                State::Eval(SExprState::new(e, env, next_kaddr, st.tick(1)))
             } else {
