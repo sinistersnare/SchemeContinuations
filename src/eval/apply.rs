@@ -96,9 +96,15 @@ fn handle_callcc_kont(k: Kont, st: &ValState) -> State {
                panic!("call/cc takes a multi-arg lambda, not vararg");
             }
          }
+      } else if let _kont_arg @ Val::Kont(..) = val {
+         // TODO: How to handle this case.
+         // (call/cc kont_arg)
+         // put kont_arg as the new cc, and give it a value of
+         // the old cc as its value.
+         // State::Apply(ValState::New(k, env, kont_arg, st.tick(1)))
+         panic!("Dont support (call/cc k) for now.");
       } else {
-         // TODO: (call/cc k) support!
-         panic!("Callcc only works with lambdas right now!");
+         panic!("Call/cc given wrong type of argument.");
       }
    } else {
       panic!("Given Wrong Kontinuation");
@@ -205,12 +211,7 @@ fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
                   let scm_list = make_scm_list(args.to_vec());
                   let addr = store.add_to_store(scm_list, st);
                   let newenv = cloenv.insert(vararg, addr);
-                  State::Eval(SExprState::new(
-                     body,
-                     newenv,
-                     next_kaddr,
-                     st.tick(1),
-                  ))
+                  State::Eval(SExprState::new(body, newenv, next_kaddr, st.tick(1)))
                }
             }
          } else if let k @ Val::Kont(..) = head {

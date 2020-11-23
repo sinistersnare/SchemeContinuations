@@ -12,8 +12,9 @@ use crate::prims::apply_prim;
 
 fn is_atomic(ctrl: &SExpr) -> bool {
    match ctrl {
-      SExpr::List(ref list) => matches!(matches_lambda_expr(list), Some(_))
-                               || matches!(matches_quote_expr(list), Some(_)),
+      SExpr::List(ref list) => {
+         matches!(matches_lambda_expr(list), Some(_)) || matches!(matches_quote_expr(list), Some(_))
+      }
       SExpr::Atom(_) => true,
    }
 }
