@@ -42,7 +42,7 @@ fn atomic_eval(SExprState { ctrl, env, .. }: &SExprState, store: &Store) -> Val 
 
 fn handle_prim_expr(prim: Prim, mut args: Vec<SExpr>, st: &SExprState, store: &mut Store) -> State {
    let SExprState { env, kont_addr, .. } = st.clone();
-   if args.len() == 0 {
+   if args.is_empty() {
       let val = apply_prim(prim, &[]);
       State::Apply(ValState::new(val, env, kont_addr, st.tick(1)))
    } else {

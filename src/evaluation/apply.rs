@@ -23,7 +23,7 @@ fn handle_let_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
    if let Kont::Let(vars, mut done, mut todo, eb, letenv, next_kaddr) = k {
       done.push(val);
       if todo.is_empty() {
-         let mut newenv = letenv.clone();
+         let mut newenv = letenv;
          for (i, (bndvar, val)) in vars.iter().zip(done.iter()).enumerate() {
             let bnd_addr = store.add_to_store_offset(val.clone(), st, i as u64);
             newenv = newenv.insert(bndvar.clone(), bnd_addr.clone());
@@ -151,7 +151,7 @@ fn handle_apply_list_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
                if argvals.len() != args.len() {
                   panic!("Mismatch arg count between func and arglist.");
                }
-               let mut newenv = cloenv.clone();
+               let mut newenv = cloenv;
                for (i, (arg, argval)) in args.iter().zip(argvals.iter()).enumerate() {
                   let argval_addr = store.add_to_store_offset(argval.clone(), st, i as u64);
                   newenv = newenv.insert(arg.clone(), argval_addr.clone());
@@ -164,7 +164,7 @@ fn handle_apply_list_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
                ))
             } else if let Val::Closure(Closure(CloType::VarArg(arg), body, cloenv)) = *func {
                let addr = store.add_to_store(val, st);
-               let newenv = cloenv.insert(arg.clone(), addr);
+               let newenv = cloenv.insert(arg, addr);
                State::Eval(SExprState::new(body, newenv, next_kaddr, st.tick(1)))
             } else {
                panic!("Not given a function in `(apply func arglist)`");
@@ -189,13 +189,13 @@ fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
                   if params.len() != args.len() {
                      panic!("arg # mismatch.");
                   }
-                  let mut newenv = cloenv.clone();
+                  let mut newenv = cloenv;
                   for (i, (param, arg)) in params.iter().zip(args.iter()).enumerate() {
                      let param_addr = store.add_to_store_offset(arg.clone(), st, i as u64);
                      newenv = newenv.insert(param.clone(), param_addr.clone());
                   }
                   State::Eval(SExprState::new(
-                     body.clone(),
+                     body,
                      newenv,
                      next_kaddr,
                      st.tick(params.len() as u64),
@@ -204,9 +204,9 @@ fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
                CloType::VarArg(vararg) => {
                   let scm_list = make_scm_list(args.to_vec());
                   let addr = store.add_to_store(scm_list, st);
-                  let newenv = cloenv.insert(vararg.clone(), addr);
+                  let newenv = cloenv.insert(vararg, addr);
                   State::Eval(SExprState::new(
-                     body.clone(),
+                     body,
                      newenv,
                      next_kaddr,
                      st.tick(1),
@@ -219,7 +219,7 @@ fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
             }
 
             // replace the current continuation with the stored one.
-            let new_kaddr = store.add_to_store(k.clone(), st);
+            let new_kaddr = store.add_to_store(k, st);
             State::Apply(ValState::new(
                args[0].clone(),
                appenv,
