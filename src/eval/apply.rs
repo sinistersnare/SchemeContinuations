@@ -107,7 +107,7 @@ fn handle_callcc_kont(k: Kont, st: &ValState) -> State {
 
 fn handle_set_bang_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
    let ValState { ctrl: val, env, .. } = st.clone();
-   if let Kont::SetBang(var, next_kaddr) = k {
+   if let Kont::Set(var, next_kaddr) = k {
       let addr = match env.get(var.clone()) {
          Some(v) => v,
          None => panic!("{:?} was not defined.", var),
@@ -240,22 +240,6 @@ fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
    }
 }
 
-/*
-
-fn handle(k: Kont, st: &ValState, store: &mut Store) -> State {
-   let ValState {
-      ctrl: val,
-      env,
-      kont_addr,
-      ..
-   } = st.clone();
-   if let = k {
-   } else {
-      panic!("Given Wrong Kontinuation");
-   }
-}
-*/
-
 pub fn apply_step(st: &ValState, store: &mut Store) -> State {
    let ValState { kont_addr, .. } = st.clone();
    let kontval = store.get(kont_addr).expect("Dont Got Kont");
@@ -267,7 +251,7 @@ pub fn apply_step(st: &ValState, store: &mut Store) -> State {
          k @ Kont::Prim(..) => handle_prim_kont(k, st, store),
          k @ Kont::ApplyPrim(..) => handle_apply_prim_kont(k, st),
          k @ Kont::Callcc(..) => handle_callcc_kont(k, st),
-         k @ Kont::SetBang(..) => handle_set_bang_kont(k, st, store),
+         k @ Kont::Set(..) => handle_set_bang_kont(k, st, store),
          k @ Kont::ApplyList(..) => handle_apply_list_kont(k, st, store),
          k @ Kont::App(..) => handle_app(k, st, store),
       }

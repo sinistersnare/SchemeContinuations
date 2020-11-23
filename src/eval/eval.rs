@@ -12,7 +12,8 @@ use crate::prims::apply_prim;
 
 fn is_atomic(ctrl: &SExpr) -> bool {
    match ctrl {
-      SExpr::List(ref list) => matches!(matches_lambda_expr(list), Some(_)),
+      SExpr::List(ref list) => matches!(matches_lambda_expr(list), Some(_))
+                               || matches!(matches_quote_expr(list), Some(_)),
       SExpr::Atom(_) => true,
    }
 }
@@ -22,6 +23,8 @@ fn atomic_eval(SExprState { ctrl, env, .. }: &SExprState, store: &Store) -> Val 
       SExpr::List(ref list) => {
          if let Some((args, body)) = matches_lambda_expr(list) {
             Val::Closure(Closure(args, body, env.clone()))
+         } else if let Some(e) = matches_quote_expr(list) {
+            Val::Quote(e)
          } else {
             panic!("Not given an atomic value, given some list.");
          }
@@ -122,8 +125,6 @@ pub fn eval_step(st: &SExprState, store: &mut Store) -> State {
                State::Eval(SExprState::new(ec, env, next_kaddr, st.tick(1)))
             } else if let Some((vars, exprs, eb)) = matches_let_expr(list) {
                handle_let_expr(vars, exprs, eb, st, store)
-            } else if let Some(e) = matches_quote_expr(list) {
-               State::Apply(ValState::new(Val::Quote(e), env, kont_addr, st.tick(1)))
             } else if let Some((func, arglist)) = matches_apply_expr(list) {
                let new_kont = Kont::ApplyList(None, arglist, env.clone(), kont_addr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
@@ -139,7 +140,7 @@ pub fn eval_step(st: &SExprState, store: &mut Store) -> State {
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
                State::Eval(SExprState::new(e, env, next_kaddr, st.tick(1)))
             } else if let Some((var, e)) = matches_setbang_expr(list) {
-               let new_kont = Kont::SetBang(var, kont_addr);
+               let new_kont = Kont::Set(var, kont_addr);
                let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
                State::Eval(SExprState::new(e, env, next_kaddr, st.tick(1)))
             } else {

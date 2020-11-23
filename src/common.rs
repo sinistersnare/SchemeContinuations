@@ -1,32 +1,9 @@
 use std::fmt;
 
-#[derive(Hash, Clone, PartialEq, Eq)]
-pub enum SExpr {
-   List(Vec<SExpr>),
-   Atom(String),
-}
-
-impl fmt::Debug for SExpr {
-   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-      match self {
-         SExpr::List(ref list) => {
-            write!(f, "(")?;
-            for (i, e) in list.iter().enumerate() {
-               write!(f, "{:?}", e)?;
-               if i + 1 != list.len() {
-                  write!(f, " ")?;
-               }
-            }
-            write!(f, ")")
-         }
-         SExpr::Atom(ref atom) => write!(f, "{}", atom),
-      }
-   }
-}
-
-pub trait Alloc {
-   fn alloc(&self, offset: u64) -> Addr;
-   fn tick(&self, amt: u64) -> Time;
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub enum State {
+   Eval(SExprState),
+   Apply(ValState),
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
@@ -35,6 +12,78 @@ pub struct SExprState {
    pub env: Env,
    pub kont_addr: Addr,
    pub time: Time,
+}
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub struct ValState {
+   pub ctrl: Val,
+   pub env: Env,
+   pub kont_addr: Addr,
+   pub time: Time,
+}
+
+#[derive(Hash, Clone, PartialEq, Eq)]
+pub enum SExpr {
+   List(Vec<SExpr>),
+   Atom(String),
+}
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub struct Env(pub im::HashMap<Var, Addr>);
+
+/// Store isnt clonable, its global!
+#[derive(Debug)]
+pub struct Store(pub std::collections::HashMap<Addr, Val>);
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub enum Val {
+   Null, // mostly used as end-of-list sentinel value.
+   Void, // returned by things like `(set! x e)`, (prim println), etc.
+   Closure(Closure),
+   Number(i64),
+   Kont(Kont),
+   Boolean(bool),
+   Quote(SExpr),
+   Cons(Box<Val>, Box<Val>),
+}
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub struct Closure(pub CloType, pub SExpr, pub Env);
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub enum CloType {
+   MultiArg(Vec<Var>),
+   VarArg(Var),
+}
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub enum Kont {
+   Empty,
+   If(SExpr, SExpr, Env, Addr),
+   Let(Vec<Var>, Vec<Val>, Vec<SExpr>, SExpr, Env, Addr),
+   Callcc(Addr),
+   Set(Var, Addr),
+   Prim(Prim, Vec<Val>, Vec<SExpr>, Env, Addr),
+   ApplyPrim(Prim, Addr),
+   ApplyList(Option<Box<Val>>, SExpr, Env, Addr),
+   App(Vec<Val>, Vec<SExpr>, Env, Addr),
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Var(pub String);
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Addr(pub u64);
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Time(pub u64);
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Prim(pub String);
+
+pub trait Alloc {
+   fn alloc(&self, offset: u64) -> Addr;
+   fn tick(&self, amt: u64) -> Time;
 }
 
 impl SExprState {
@@ -62,14 +111,6 @@ impl Alloc for SExprState {
    }
 }
 
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub struct ValState {
-   pub ctrl: Val,
-   pub env: Env,
-   pub kont_addr: Addr,
-   pub time: Time,
-}
-
 impl ValState {
    pub fn new(ctrl: Val, env: Env, kont_addr: Addr, time: Time) -> ValState {
       ValState {
@@ -95,12 +136,6 @@ impl Alloc for ValState {
    }
 }
 
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub enum State {
-   Eval(SExprState),
-   Apply(ValState),
-}
-
 impl Alloc for State {
    fn alloc(&self, offset: u64) -> Addr {
       match self {
@@ -116,13 +151,6 @@ impl Alloc for State {
       }
    }
 }
-
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub struct Env(pub im::HashMap<Var, Addr>);
-
-/// Store isnt clonable, its global!
-#[derive(Debug)]
-pub struct Store(pub std::collections::HashMap<Addr, Val>);
 
 impl Env {
    pub fn insert(&self, k: Var, v: Addr) -> Env {
@@ -156,51 +184,23 @@ impl Store {
    }
 }
 
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub enum Val {
-   Null, // mostly used as end-of-list sentinel value.
-   Void, // returned by things like `(set! x e)`.
-   Closure(Closure),
-   Number(i64),
-   Kont(Kont),
-   Boolean(bool),
-   Quote(SExpr),
-   Cons(Box<Val>, Box<Val>),
+impl fmt::Debug for SExpr {
+   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+      match self {
+         SExpr::List(ref list) => {
+            write!(f, "(")?;
+            for (i, e) in list.iter().enumerate() {
+               write!(f, "{:?}", e)?;
+               if i + 1 != list.len() {
+                  write!(f, " ")?;
+               }
+            }
+            write!(f, ")")
+         }
+         SExpr::Atom(ref atom) => write!(f, "{}", atom),
+      }
+   }
 }
-
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub struct Closure(pub CloType, pub SExpr, pub Env);
-
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub enum CloType {
-   MultiArg(Vec<Var>),
-   VarArg(Var),
-}
-
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub enum Kont {
-   Empty,
-   If(SExpr, SExpr, Env, Addr),
-   Let(Vec<Var>, Vec<Val>, Vec<SExpr>, SExpr, Env, Addr),
-   Prim(Prim, Vec<Val>, Vec<SExpr>, Env, Addr),
-   ApplyPrim(Prim, Addr),
-   Callcc(Addr),
-   App(Vec<Val>, Vec<SExpr>, Env, Addr),
-   ApplyList(Option<Box<Val>>, SExpr, Env, Addr),
-   SetBang(Var, Addr),
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Var(pub String);
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Addr(pub u64);
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Time(pub u64);
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Prim(pub String);
 
 pub fn val_is_list(val: &Val) -> bool {
    if !matches!(val, Val::Cons(_, _)|Val::Null) {
