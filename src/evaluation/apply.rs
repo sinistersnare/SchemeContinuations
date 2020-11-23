@@ -20,7 +20,7 @@ fn handle_if_kont(k: Kont, st: &ValState) -> State {
 
 fn handle_let_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
    let ValState { ctrl: val, .. } = st.clone();
-   if let Kont::Let(vars, mut done, todo, eb, letenv, next_kaddr) = k {
+   if let Kont::Let(vars, mut done, mut todo, eb, letenv, next_kaddr) = k {
       done.push(val);
       if todo.is_empty() {
          let mut newenv = letenv.clone();
@@ -35,17 +35,10 @@ fn handle_let_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
             st.tick(1 + (vars.len() as u64)),
          ))
       } else {
-         // TODO: There must be some better way to get
-         // (T, Vec<T>) from Vec<T>, removing the 0th element.
-         let (head, tail) = todo.split_first().unwrap();
-         let new_kont = Kont::Let(vars, done, tail.to_vec(), eb, letenv.clone(), next_kaddr);
+         let head = todo.remove(0);
+         let new_kont = Kont::Let(vars, done, todo, eb, letenv.clone(), next_kaddr);
          let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-         State::Eval(SExprState::new(
-            head.clone(),
-            letenv,
-            next_kaddr,
-            st.tick(1),
-         ))
+         State::Eval(SExprState::new(head, letenv, next_kaddr, st.tick(1)))
       }
    } else {
       panic!("Given Wrong Kontinuation");
@@ -54,21 +47,16 @@ fn handle_let_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
 
 fn handle_prim_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
    let ValState { ctrl: val, .. } = st.clone();
-   if let Kont::Prim(op, mut done, todo, primenv, next_kaddr) = k {
+   if let Kont::Prim(op, mut done, mut todo, primenv, next_kaddr) = k {
       done.push(val);
       if todo.is_empty() {
          let val = apply_prim(op, &done);
          State::Apply(ValState::new(val, primenv, next_kaddr, st.tick(1)))
       } else {
-         let (head, tail) = todo.split_first().unwrap();
-         let new_kont = Kont::Prim(op, done, tail.to_vec(), primenv.clone(), next_kaddr);
+         let head = todo.remove(0);
+         let new_kont = Kont::Prim(op, done, todo, primenv.clone(), next_kaddr);
          let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-         State::Eval(SExprState::new(
-            head.clone(),
-            primenv,
-            next_kaddr,
-            st.tick(1),
-         ))
+         State::Eval(SExprState::new(head, primenv, next_kaddr, st.tick(1)))
       }
    } else {
       panic!("Given Wrong Kontinuation");
@@ -190,12 +178,12 @@ fn handle_apply_list_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
 
 fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
    let ValState { ctrl: val, .. } = st.clone();
-   if let Kont::App(mut done, todo, appenv, next_kaddr) = k {
+   if let Kont::App(mut done, mut todo, appenv, next_kaddr) = k {
+      done.push(val);
       if todo.is_empty() {
-         done.push(val);
-         if let (Val::Closure(Closure(clotype, body, cloenv)), args) =
-            done.split_first().expect("Bad App")
-         {
+         let head = done.remove(0);
+         let args = done;
+         if let Val::Closure(Closure(clotype, body, cloenv)) = head {
             match clotype {
                CloType::MultiArg(params) => {
                   if params.len() != args.len() {
@@ -225,7 +213,7 @@ fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
                   ))
                }
             }
-         } else if let (k @ Val::Kont(_), args) = done.split_first().expect("Bad CC App") {
+         } else if let k @ Val::Kont(..) = head {
             if args.len() != 1 {
                panic!("applying a kont only takes 1 argument.");
             }
@@ -242,16 +230,10 @@ fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
             panic!("Closure wasnt head of application");
          }
       } else {
-         done.push(val);
-         let (head, tail) = todo.split_first().unwrap();
-         let new_kont = Kont::App(done, tail.to_vec(), appenv.clone(), next_kaddr);
+         let head = todo.remove(0);
+         let new_kont = Kont::App(done, todo, appenv.clone(), next_kaddr);
          let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-         State::Eval(SExprState::new(
-            head.clone(),
-            appenv,
-            next_kaddr,
-            st.tick(1),
-         ))
+         State::Eval(SExprState::new(head, appenv, next_kaddr, st.tick(1)))
       }
    } else {
       panic!("Given Wrong Kontinuation");

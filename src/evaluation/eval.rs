@@ -40,28 +40,28 @@ fn atomic_eval(SExprState { ctrl, env, .. }: &SExprState, store: &Store) -> Val 
    }
 }
 
-fn handle_prim_expr(prim: Prim, args: Vec<SExpr>, st: &SExprState, store: &mut Store) -> State {
+fn handle_prim_expr(prim: Prim, mut args: Vec<SExpr>, st: &SExprState, store: &mut Store) -> State {
    let SExprState { env, kont_addr, .. } = st.clone();
    if args.len() == 0 {
       let val = apply_prim(prim, &[]);
       State::Apply(ValState::new(val, env, kont_addr, st.tick(1)))
    } else {
-      let (arg0, args) = args.split_first().unwrap();
+      let arg0 = args.remove(0);
       let new_kont = Kont::Prim(
          prim,
          Vec::with_capacity(args.len()),
-         args.to_vec(),
+         args,
          env.clone(),
          kont_addr,
       );
       let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-      State::Eval(SExprState::new(arg0.clone(), env, next_kaddr, st.tick(1)))
+      State::Eval(SExprState::new(arg0, env, next_kaddr, st.tick(1)))
    }
 }
 
 fn handle_let_expr(
    vars: Vec<Var>,
-   exprs: Vec<SExpr>,
+   mut exprs: Vec<SExpr>,
    eb: SExpr,
    st: &SExprState,
    store: &mut Store,
@@ -73,17 +73,18 @@ fn handle_let_expr(
       // because of you I have to cover this case
       State::Eval(SExprState::new(eb, env, kont_addr, st.tick(1)))
    } else {
-      let (e0, rest) = exprs.split_first().unwrap();
+      let e0 = exprs.remove(0);
+      let rest = exprs;
       let new_kont = Kont::Let(
          vars,
          Vec::with_capacity(len),
-         rest.to_vec(),
+         rest,
          eb,
          env.clone(),
          kont_addr,
       );
       let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-      State::Eval(SExprState::new(e0.clone(), env, next_kaddr, st.tick(1)))
+      State::Eval(SExprState::new(e0, env, next_kaddr, st.tick(1)))
    }
 }
 
