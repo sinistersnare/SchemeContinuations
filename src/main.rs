@@ -14,15 +14,15 @@ use std::fs;
 
 use combine::Parser;
 
-pub mod evaluation;
-pub mod prims;
 pub mod common;
 pub mod eval;
+pub mod evaluation;
+pub mod prims;
 pub mod read;
 
+use crate::common::State;
 use crate::eval::evaluate;
 use crate::read::expr;
-use crate::common::State;
 
 fn main() {
    if let Some(filename) = env::args().nth(1) {
@@ -66,7 +66,6 @@ fn exec_string(program: String) {
             State::Eval(e) => panic!("Howd we end with eval? {:?}", e),
             State::Apply(v) => println!("{:?}", v.ctrl),
          }
-
       }
       Err(e) => println!("Error Parsing: {:?}", e),
    };

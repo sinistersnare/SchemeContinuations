@@ -1,4 +1,2 @@
-
-
-pub mod eval;
 pub mod apply;
+pub mod eval;

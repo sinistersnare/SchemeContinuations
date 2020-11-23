@@ -1,9 +1,8 @@
 //! The evaluator of scheme ASTs.
 
-use crate::common::{State, SExprState, Addr, Env, Kont,
-                  SExpr, Store, Time, Val};
-use crate::evaluation::eval::{expr_step};
-use crate::evaluation::apply::{val_step};
+use crate::common::{Addr, Env, Kont, SExpr, SExprState, State, Store, Time, Val};
+use crate::evaluation::apply::val_step;
+use crate::evaluation::eval::expr_step;
 
 fn inject(ctrl: SExpr) -> SExprState {
    // Time 0 was for creation of the state, we start on 1.

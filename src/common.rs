@@ -202,9 +202,6 @@ pub struct Time(pub u64);
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Prim(pub String);
 
-
-
-
 pub fn val_is_list(val: &Val) -> bool {
    if !matches!(val, Val::Cons(_, _)|Val::Null) {
       return false;

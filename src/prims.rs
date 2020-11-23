@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::common::{Val, Prim};
+use crate::common::{Prim, Val};
 
 fn prim_add(args: &[Val]) -> Val {
    let mut ret = 0;
@@ -26,7 +26,6 @@ fn prim_mult(args: &[Val]) -> Val {
    Val::Number(ret)
 }
 
-
 fn prim_cons(args: &[Val]) -> Val {
    if args.len() != 2 {
       panic!("Cons takes 2 arguments, given {}", args.len());
@@ -41,7 +40,7 @@ fn prim_car(args: &[Val]) -> Val {
    }
    match args[0] {
       Val::Cons(ref car, _) => *car.clone(),
-      _ => panic!("Not given a Cons.")
+      _ => panic!("Not given a Cons."),
    }
 }
 
@@ -51,7 +50,7 @@ fn prim_cdr(args: &[Val]) -> Val {
    }
    match args[0] {
       Val::Cons(_, ref cdr) => *cdr.clone(),
-      _ => panic!("Not given a Cons.")
+      _ => panic!("Not given a Cons."),
    }
 }
 

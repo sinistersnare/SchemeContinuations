@@ -1,13 +1,12 @@
 //!
 //! Items to do with 'apply states'
 
-use crate::common::{State, SExprState, ValState, Closure, Kont, Store, Val, CloType, Alloc};
-use crate::prims::{apply_prim};
-use crate::common::{val_is_list, make_scm_list,
-                   scm_list_to_vals};
+use crate::common::{make_scm_list, scm_list_to_vals, val_is_list};
+use crate::common::{Alloc, CloType, Closure, Kont, SExprState, State, Store, Val, ValState};
+use crate::prims::apply_prim;
 
 fn handle_if_kont(k: Kont, st: &ValState) -> State {
-   let ValState {ctrl: val,..} = st.clone();
+   let ValState { ctrl: val, .. } = st.clone();
    if let Kont::If(et, ef, ifenv, next_kaddr) = k {
       if val == Val::Boolean(false) {
          State::Eval(SExprState::new(ef, ifenv, next_kaddr, st.tick(1)))
@@ -20,7 +19,7 @@ fn handle_if_kont(k: Kont, st: &ValState) -> State {
 }
 
 fn handle_let_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
-   let ValState {ctrl: val,..} = st.clone();
+   let ValState { ctrl: val, .. } = st.clone();
    if let Kont::Let(vars, mut done, todo, eb, letenv, next_kaddr) = k {
       done.push(val);
       if todo.is_empty() {
@@ -39,10 +38,14 @@ fn handle_let_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
          // TODO: There must be some better way to get
          // (T, Vec<T>) from Vec<T>, removing the 0th element.
          let (head, tail) = todo.split_first().unwrap();
-         let new_kont = Kont::Let(vars, done, tail.to_vec(),
-                                   eb, letenv.clone(), next_kaddr);
+         let new_kont = Kont::Let(vars, done, tail.to_vec(), eb, letenv.clone(), next_kaddr);
          let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-         State::Eval(SExprState::new(head.clone(), letenv, next_kaddr, st.tick(1)))
+         State::Eval(SExprState::new(
+            head.clone(),
+            letenv,
+            next_kaddr,
+            st.tick(1),
+         ))
       }
    } else {
       panic!("Given Wrong Kontinuation");
@@ -50,7 +53,7 @@ fn handle_let_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
 }
 
 fn handle_prim_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
-   let ValState {ctrl: val,..} = st.clone();
+   let ValState { ctrl: val, .. } = st.clone();
    if let Kont::Prim(op, mut done, todo, primenv, next_kaddr) = k {
       done.push(val);
       if todo.is_empty() {
@@ -60,7 +63,12 @@ fn handle_prim_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
          let (head, tail) = todo.split_first().unwrap();
          let new_kont = Kont::Prim(op, done, tail.to_vec(), primenv.clone(), next_kaddr);
          let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-         State::Eval(SExprState::new(head.clone(), primenv, next_kaddr, st.tick(1)))
+         State::Eval(SExprState::new(
+            head.clone(),
+            primenv,
+            next_kaddr,
+            st.tick(1),
+         ))
       }
    } else {
       panic!("Given Wrong Kontinuation");
@@ -68,9 +76,11 @@ fn handle_prim_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
 }
 
 fn handle_apply_prim_kont(k: Kont, st: &ValState) -> State {
-   let ValState {ctrl: val,env,..} = st.clone();
+   let ValState { ctrl: val, env, .. } = st.clone();
    if let Kont::ApplyPrim(op, next_kaddr) = k {
-      if !val_is_list(&val) { panic!("Apply not given a list.");}
+      if !val_is_list(&val) {
+         panic!("Apply not given a list.");
+      }
       let val = apply_prim(op, &scm_list_to_vals(val));
       State::Apply(ValState::new(val, env, next_kaddr, st.tick(1)))
    } else {
@@ -79,7 +89,7 @@ fn handle_apply_prim_kont(k: Kont, st: &ValState) -> State {
 }
 
 fn handle_callcc_kont(k: Kont, st: &ValState) -> State {
-   let ValState {ctrl: val, ..} = st.clone();
+   let ValState { ctrl: val, .. } = st.clone();
    if let Kont::Callcc(next_kaddr) = k {
       if let Val::Closure(Closure(clotype, body, cloenv)) = val {
          match clotype {
@@ -108,7 +118,7 @@ fn handle_callcc_kont(k: Kont, st: &ValState) -> State {
 }
 
 fn handle_set_bang_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
-   let ValState {ctrl: val, env, ..} = st.clone();
+   let ValState { ctrl: val, env, .. } = st.clone();
    if let Kont::SetBang(var, next_kaddr) = k {
       let addr = match env.get(var.clone()) {
          Some(v) => v,
@@ -123,17 +133,22 @@ fn handle_set_bang_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
 
 fn handle_apply_list_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
    let ValState { ctrl: val, .. } = st.clone();
-   if let Kont::ApplyList(maybe_func, arglist, applyenv, next_kaddr) = k {      match maybe_func {
+   if let Kont::ApplyList(maybe_func, arglist, applyenv, next_kaddr) = k {
+      match maybe_func {
          None => {
-            let new_kont = Kont::ApplyList(Some(Box::new(val)),
-                                            arglist.clone(),
-                                            applyenv.clone(),
-                                            next_kaddr);
+            let new_kont = Kont::ApplyList(
+               Some(Box::new(val)),
+               arglist.clone(),
+               applyenv.clone(),
+               next_kaddr,
+            );
             let kont_addr = store.add_to_store(Val::Kont(new_kont), st);
             State::Eval(SExprState::new(arglist, applyenv, kont_addr, st.tick(1)))
          }
          Some(func) => {
-            if !val_is_list(&val) { panic!("Apply not given a list.");}
+            if !val_is_list(&val) {
+               panic!("Apply not given a list.");
+            }
             if let Val::Closure(Closure(CloType::MultiArg(args), body, cloenv)) = *func {
                let mut cur = val;
                let mut argvals = Vec::with_capacity(args.len());
@@ -157,8 +172,8 @@ fn handle_apply_list_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
                   body,
                   newenv,
                   next_kaddr,
-                  st.tick(args.len() as u64)),
-               )
+                  st.tick(args.len() as u64),
+               ))
             } else if let Val::Closure(Closure(CloType::VarArg(arg), body, cloenv)) = *func {
                let addr = store.add_to_store(val, st);
                let newenv = cloenv.insert(arg.clone(), addr);
@@ -202,7 +217,12 @@ fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
                   let scm_list = make_scm_list(args.to_vec());
                   let addr = store.add_to_store(scm_list, st);
                   let newenv = cloenv.insert(vararg.clone(), addr);
-                  State::Eval(SExprState::new(body.clone(), newenv, next_kaddr, st.tick(1)))
+                  State::Eval(SExprState::new(
+                     body.clone(),
+                     newenv,
+                     next_kaddr,
+                     st.tick(1),
+                  ))
                }
             }
          } else if let (k @ Val::Kont(_), args) = done.split_first().expect("Bad CC App") {
@@ -212,8 +232,12 @@ fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
 
             // replace the current continuation with the stored one.
             let new_kaddr = store.add_to_store(k.clone(), st);
-            State::Apply(ValState::new(args[0].clone(), appenv,
-                                     new_kaddr, st.tick(1)))
+            State::Apply(ValState::new(
+               args[0].clone(),
+               appenv,
+               new_kaddr,
+               st.tick(1),
+            ))
          } else {
             panic!("Closure wasnt head of application");
          }
@@ -222,7 +246,12 @@ fn handle_app(k: Kont, st: &ValState, store: &mut Store) -> State {
          let (head, tail) = todo.split_first().unwrap();
          let new_kont = Kont::App(done, tail.to_vec(), appenv.clone(), next_kaddr);
          let next_kaddr = store.add_to_store(Val::Kont(new_kont), st);
-         State::Eval(SExprState::new(head.clone(), appenv, next_kaddr, st.tick(1)))
+         State::Eval(SExprState::new(
+            head.clone(),
+            appenv,
+            next_kaddr,
+            st.tick(1),
+         ))
       }
    } else {
       panic!("Given Wrong Kontinuation");
@@ -246,38 +275,19 @@ fn handle(k: Kont, st: &ValState, store: &mut Store) -> State {
 */
 
 pub fn val_step(st: &ValState, store: &mut Store) -> State {
-   let ValState {
-      kont_addr,
-      ..
-   } = st.clone();
+   let ValState { kont_addr, .. } = st.clone();
    let kontval = store.get(kont_addr).expect("Dont Got Kont");
    if let Val::Kont(kont) = kontval {
       match kont {
          Kont::Empty => State::Apply(st.clone()), // fixpoint!
-         k@Kont::If(..) => {
-            handle_if_kont(k, st)
-         }
-         k@Kont::Let(..) => {
-            handle_let_kont(k, st, store)
-         }
-         k@Kont::Prim(..) => {
-            handle_prim_kont(k, st, store)
-         }
-         k@Kont::ApplyPrim(..) => {
-            handle_apply_prim_kont(k, st)
-         }
-         k@Kont::Callcc(..) => {
-            handle_callcc_kont(k, st)
-         }
-         k@Kont::SetBang(..) => {
-            handle_set_bang_kont(k, st, store)
-         }
-         k@Kont::ApplyList(..) => {
-            handle_apply_list_kont(k, st, store)
-         }
-         k@Kont::App(..) => {
-            handle_app(k, st, store)
-         }
+         k @ Kont::If(..) => handle_if_kont(k, st),
+         k @ Kont::Let(..) => handle_let_kont(k, st, store),
+         k @ Kont::Prim(..) => handle_prim_kont(k, st, store),
+         k @ Kont::ApplyPrim(..) => handle_apply_prim_kont(k, st),
+         k @ Kont::Callcc(..) => handle_callcc_kont(k, st),
+         k @ Kont::SetBang(..) => handle_set_bang_kont(k, st, store),
+         k @ Kont::ApplyList(..) => handle_apply_list_kont(k, st, store),
+         k @ Kont::App(..) => handle_app(k, st, store),
       }
    } else {
       panic!("kont_addr not a kont addr!");
