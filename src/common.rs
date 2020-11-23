@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Hash, Clone, PartialEq, Eq)]
@@ -87,27 +86,43 @@ impl Store {
    pub fn get(&self, addr: Addr) -> Option<Val> {
       self.0.get(&addr).cloned()
    }
+
+   pub fn set(&mut self, addr: Addr, val: Val) -> Option<Val> {
+      self.0.insert(addr, val)
+   }
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
 pub enum Val {
+   Null, // mostly used as end-of-list sentinel value.
+   Void, // returned by things like `(set! x e)`.
    Closure(Closure),
    Number(i64),
    Kont(Kont),
    Boolean(bool),
+   Cons(Box<Val>, Box<Val>),
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub struct Closure(pub Vec<Var>, pub SExpr, pub Env);
+pub struct Closure(pub CloType, pub SExpr, pub Env);
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub enum CloType {
+   MultiArg(Vec<Var>),
+   VarArg(Var),
+}
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
 pub enum Kont {
-   Emptyk,
-   Ifk(SExpr, SExpr, Env, Addr),
-   Letk(Var, SExpr, Env, Addr),
-   Primk(Prim, Vec<Val>, Vec<SExpr>, Env, Addr),
-   Callcck(Addr),
-   Appk(Vec<Val>, Vec<SExpr>, Env, Addr),
+   Empty,
+   If(SExpr, SExpr, Env, Addr),
+   Let(Vec<Var>, Vec<Val>, Vec<SExpr>, SExpr, Env, Addr),
+   Prim(Prim, Vec<Val>, Vec<SExpr>, Env, Addr),
+   ApplyPrim(Prim, Addr),
+   Callcc(Addr),
+   App(Vec<Val>, Vec<SExpr>, Env, Addr),
+   ApplyList(Option<Box<Val>>, SExpr, Env, Addr),
+   SetBang(Var, Addr),
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -121,23 +136,3 @@ pub struct Time(pub u64);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Prim(pub String);
-
-fn prim_add(args: &[Val]) -> SExpr {
-   let mut ret = 0;
-   for arg in args {
-      if let Val::Number(n) = arg {
-         ret += n;
-      } else {
-         panic!("Not given a number to add!");
-      }
-   }
-   SExpr::Atom(format!("{}", ret))
-}
-
-lazy_static! {
-   pub static ref PRIMS: HashMap<&'static str, fn(&[Val]) -> SExpr> = {
-      let mut m = HashMap::new();
-      m.insert("+", prim_add as fn(&[Val]) -> SExpr);
-      m
-   };
-}

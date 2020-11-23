@@ -32,10 +32,15 @@ where
    let skip_spaces = || spaces().silent();
    let lex_char = |c| char(c).skip(skip_spaces());
 
-   let space_separated_exprs = sep_by(expr(), spaces());
-   let list = between(lex_char('('), lex_char(')'), space_separated_exprs);
-
-   choice((atom.map(SExpr::Atom), list.map(SExpr::List))).skip(skip_spaces())
+   let space_separated_exprs = || sep_by(expr(), spaces());
+   let list = between(lex_char('('), lex_char(')'), space_separated_exprs());
+   let sqlist = between(lex_char('['), lex_char(']'), space_separated_exprs());
+   choice((
+      atom.map(SExpr::Atom),
+      list.map(SExpr::List),
+      sqlist.map(SExpr::List),
+   ))
+   .skip(skip_spaces())
 }
 
 parser! {

@@ -14,9 +14,11 @@ use std::fs;
 
 use combine::Parser;
 
+pub mod prims;
 pub mod common;
 pub mod eval;
 pub mod read;
+
 use crate::eval::evaluate;
 use crate::read::expr;
 
