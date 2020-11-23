@@ -256,7 +256,7 @@ fn handle(k: Kont, st: &ValState, store: &mut Store) -> State {
 }
 */
 
-pub fn val_step(st: &ValState, store: &mut Store) -> State {
+pub fn apply_step(st: &ValState, store: &mut Store) -> State {
    let ValState { kont_addr, .. } = st.clone();
    let kontval = store.get(kont_addr).expect("Dont Got Kont");
    if let Val::Kont(kont) = kontval {

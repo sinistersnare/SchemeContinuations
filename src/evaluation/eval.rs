@@ -102,7 +102,7 @@ fn handle_function_application_expr(list: &[SExpr], st: &SExprState, store: &mut
    State::Eval(SExprState::new(func.clone(), env, next_kaddr, st.tick(1)))
 }
 
-pub fn expr_step(st: &SExprState, store: &mut Store) -> State {
+pub fn eval_step(st: &SExprState, store: &mut Store) -> State {
    let SExprState {
       ctrl,
       env,

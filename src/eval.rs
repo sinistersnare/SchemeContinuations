@@ -1,19 +1,24 @@
 //! The evaluator of scheme ASTs.
 
 use crate::common::{Addr, Env, Kont, SExpr, SExprState, State, Store, Time, Val};
-use crate::evaluation::apply::val_step;
-use crate::evaluation::eval::expr_step;
+use crate::evaluation::apply::apply_step;
+use crate::evaluation::eval::eval_step;
 
-fn inject(ctrl: SExpr) -> SExprState {
+fn inject(ctrl: SExpr) -> State {
    // Time 0 was for creation of the state, we start on 1.
    // (becuase mt is addr 0, we need to start with 1)
-   SExprState::new(ctrl, Env(im::HashMap::new()), Addr(0), Time(1))
+   State::Eval(SExprState::new(
+      ctrl,
+      Env(im::HashMap::new()),
+      Addr(0),
+      Time(1),
+   ))
 }
 
 pub fn step(st: &State, store: &mut Store) -> State {
    match st {
-      State::Apply(vs) => val_step(vs, store),
-      State::Eval(es) => expr_step(es, store),
+      State::Eval(sexpr_state) => eval_step(sexpr_state, store),
+      State::Apply(val_state) => apply_step(val_state, store),
    }
 }
 
@@ -23,8 +28,8 @@ pub fn evaluate(ctrl: SExpr) -> (State, Store) {
    inner.insert(Addr(0), Val::Kont(Kont::Empty));
    let mut store = Store(inner);
 
-   let mut st0: State = State::Eval(inject(ctrl));
-   let mut stepped: State = step(&st0, &mut store);
+   let mut st0 = inject(ctrl);
+   let mut stepped = step(&st0, &mut store);
    while st0 != stepped {
       st0 = stepped;
       stepped = step(&st0, &mut store);
