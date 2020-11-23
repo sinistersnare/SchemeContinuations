@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::common::{Val};
+use crate::common::{Val, Prim};
 
 fn prim_add(args: &[Val]) -> Val {
    let mut ret = 0;
@@ -65,4 +65,8 @@ lazy_static! {
       m.insert("cdr", prim_cdr as fn(&[Val]) -> Val);
       m
    };
+}
+
+pub fn apply_prim(Prim(op): Prim, args: &[Val]) -> Val {
+   (*PRIMS.get::<str>(&op).expect("Prim doesnt exist!"))(args)
 }

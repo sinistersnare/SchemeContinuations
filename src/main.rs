@@ -14,6 +14,7 @@ use std::fs;
 
 use combine::Parser;
 
+pub mod evaluation;
 pub mod prims;
 pub mod common;
 pub mod eval;
@@ -21,6 +22,7 @@ pub mod read;
 
 use crate::eval::evaluate;
 use crate::read::expr;
+use crate::common::State;
 
 fn main() {
    if let Some(filename) = env::args().nth(1) {
@@ -43,8 +45,11 @@ fn start_repl() {
       let parsed = expr().parse(input.trim());
       match parsed {
          Ok((sexpr, _)) => {
-            let (final_val, _fin_state, _store) = evaluate(sexpr);
-            println!("{:?}", final_val);
+            let (fin_state, _store) = evaluate(sexpr);
+            match fin_state {
+               State::Eval(e) => panic!("Howd we end with eval? {:?}", e),
+               State::Apply(v) => println!("{:?}", v.ctrl),
+            }
          }
          Err(e) => println!("Error Parsing: {:?}", e),
       };
@@ -56,8 +61,12 @@ fn exec_string(program: String) {
    let parsed = expr().parse(program.trim());
    match parsed {
       Ok((sexpr, _)) => {
-         let (final_val, _fin_state, _store) = evaluate(sexpr);
-         println!("{:?}", final_val);
+         let (fin_state, _store) = evaluate(sexpr);
+         match fin_state {
+            State::Eval(e) => panic!("Howd we end with eval? {:?}", e),
+            State::Apply(v) => println!("{:?}", v.ctrl),
+         }
+
       }
       Err(e) => println!("Error Parsing: {:?}", e),
    };

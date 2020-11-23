@@ -24,34 +24,96 @@ impl fmt::Debug for SExpr {
    }
 }
 
+pub trait Alloc {
+   fn alloc(&self, offset: u64) -> Addr;
+   fn tick(&self, amt: u64) -> Time;
+}
+
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub struct State {
+pub struct SExprState {
    pub ctrl: SExpr,
    pub env: Env,
    pub kont_addr: Addr,
    pub time: Time,
 }
 
-impl State {
-   pub fn new(ctrl: SExpr, env: Env, kont_addr: Addr, time: Time) -> State {
-      State {
+impl SExprState {
+   pub fn new(ctrl: SExpr, env: Env, kont_addr: Addr, time: Time) -> SExprState {
+      SExprState {
          ctrl,
          env,
          kont_addr,
          time,
       }
    }
+}
 
-   pub fn alloc(&self, offset: u64) -> Addr {
-      let State { time: Time(t), .. } = self;
+impl Alloc for SExprState {
+   fn alloc(&self, offset: u64) -> Addr {
+      let SExprState { time: Time(t), .. } = self;
       Addr(*t + offset)
    }
 
    /// Need to give an amount cause multiple allocations
    /// can happen in a single frame (e.g. function application)
-   pub fn tick(&self, amt: u64) -> Time {
-      let State { time: Time(t), .. } = self;
+   fn tick(&self, amt: u64) -> Time {
+      let SExprState { time: Time(t), .. } = self;
       Time(t + amt)
+   }
+}
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub struct ValState {
+   pub ctrl: Val,
+   pub env: Env,
+   pub kont_addr: Addr,
+   pub time: Time,
+}
+
+impl ValState {
+   pub fn new(ctrl: Val, env: Env, kont_addr: Addr, time: Time) -> ValState {
+      ValState {
+         ctrl,
+         env,
+         kont_addr,
+         time,
+      }
+   }
+}
+
+impl Alloc for ValState {
+   fn alloc(&self, offset: u64) -> Addr {
+      let ValState { time: Time(t), .. } = self;
+      Addr(*t + offset)
+   }
+
+   /// Need to give an amount cause multiple allocations
+   /// can happen in a single frame (e.g. function application)
+   fn tick(&self, amt: u64) -> Time {
+      let ValState { time: Time(t), .. } = self;
+      Time(t + amt)
+   }
+}
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+pub enum State {
+   Eval(SExprState),
+   Apply(ValState),
+}
+
+impl Alloc for State {
+   fn alloc(&self, offset: u64) -> Addr {
+      match self {
+         State::Eval(s) => s.alloc(offset),
+         State::Apply(v) => v.alloc(offset),
+      }
+   }
+
+   fn tick(&self, amt: u64) -> Time {
+      match self {
+         State::Eval(s) => s.tick(amt),
+         State::Apply(v) => v.tick(amt),
+      }
    }
 }
 
@@ -73,11 +135,11 @@ impl Env {
 }
 
 impl Store {
-   pub fn add_to_store(&mut self, v: Val, st: &State) -> Addr {
+   pub fn add_to_store<A: Alloc>(&mut self, v: Val, st: &A) -> Addr {
       self.add_to_store_offset(v, st, 0)
    }
 
-   pub fn add_to_store_offset(&mut self, v: Val, st: &State, offset: u64) -> Addr {
+   pub fn add_to_store_offset<A: Alloc>(&mut self, v: Val, st: &A, offset: u64) -> Addr {
       let addr = st.alloc(offset);
       self.0.insert(addr.clone(), v);
       addr
@@ -100,6 +162,7 @@ pub enum Val {
    Number(i64),
    Kont(Kont),
    Boolean(bool),
+   Quote(SExpr),
    Cons(Box<Val>, Box<Val>),
 }
 
@@ -136,3 +199,50 @@ pub struct Time(pub u64);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Prim(pub String);
+
+
+
+
+pub fn val_is_list(val: &Val) -> bool {
+   if !matches!(val, Val::Cons(_, _)|Val::Null) {
+      return false;
+   }
+   let mut cur = val;
+   while let Val::Cons(_, cdr) = cur {
+      cur = &*cdr;
+   }
+   matches!(cur, Val::Null)
+}
+
+pub fn make_scm_list(vals: Vec<Val>) -> Val {
+   let mut lst = Val::Null;
+   for v in vals.into_iter().rev() {
+      lst = Val::Cons(Box::new(v), Box::new(lst));
+   }
+   lst
+}
+
+pub fn scm_list_to_vals(val: Val) -> Vec<Val> {
+   let mut vals = vec![];
+   let mut cur = val;
+   while let Val::Cons(car, cdr) = cur {
+      vals.push(*car);
+      cur = *cdr;
+   }
+   vals
+}
+
+pub fn matches_number(str: &str) -> Option<i64> {
+   str.parse::<i64>().ok()
+}
+
+pub fn matches_boolean(str: &str) -> Option<bool> {
+   // because we cant parse #t/#f rn, just use true/false.
+   if str == "true" {
+      Some(true)
+   } else if str == "false" {
+      Some(false)
+   } else {
+      None
+   }
+}
