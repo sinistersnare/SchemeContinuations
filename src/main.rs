@@ -16,7 +16,6 @@ use combine::Parser;
 
 pub mod common;
 pub mod eval;
-pub mod evaluation;
 pub mod prims;
 pub mod read;
 
@@ -26,7 +25,7 @@ use crate::read::expr;
 
 fn main() {
    if let Some(filename) = env::args().nth(1) {
-      exec_string(fs::read_to_string(filename).expect("Could not read file"))
+      exec_string(&fs::read_to_string(filename).expect("Could not read file"))
    } else {
       start_repl();
    };
@@ -42,26 +41,17 @@ fn start_repl() {
       stdin()
          .read_line(&mut input)
          .expect("Did not enter a full string.");
-      let parsed = expr().parse(input.trim());
-      match parsed {
-         Ok((sexpr, _)) => {
-            let (fin_state, _store) = evaluate(sexpr);
-            match fin_state {
-               State::Eval(e) => panic!("Howd we end with eval? {:?}", e),
-               State::Apply(v) => println!("{:?}", v.ctrl),
-            }
-         }
-         Err(e) => println!("Error Parsing: {:?}", e),
-      };
+      exec_string(&input);
       input.clear();
    }
 }
 
-fn exec_string(program: String) {
+fn exec_string(program: &str) {
    let parsed = expr().parse(program.trim());
    match parsed {
       Ok((sexpr, _)) => {
-         let (fin_state, _store) = evaluate(sexpr);
+         let (states, _store) = evaluate(sexpr);
+         let fin_state = states.last().unwrap();
          match fin_state {
             State::Eval(e) => panic!("Howd we end with eval? {:?}", e),
             State::Apply(v) => println!("{:?}", v.ctrl),

@@ -1,8 +1,12 @@
+//!
 //! The evaluator of scheme ASTs.
 
+pub mod apply;
+pub mod eval;
+
 use crate::common::{Addr, Env, Kont, SExpr, SExprState, State, Store, Time, Val};
-use crate::evaluation::apply::apply_step;
-use crate::evaluation::eval::eval_step;
+use apply::apply_step;
+use eval::eval_step;
 
 fn inject(ctrl: SExpr) -> State {
    // Time 0 was for creation of the state, we start on 1.
@@ -22,7 +26,7 @@ pub fn step(st: &State, store: &mut Store) -> State {
    }
 }
 
-pub fn evaluate(ctrl: SExpr) -> (State, Store) {
+pub fn evaluate(ctrl: SExpr) -> (Vec<State>, Store) {
    // initially the store only has the Empty continuation
    let mut inner = std::collections::HashMap::new();
    inner.insert(Addr(0), Val::Kont(Kont::Empty));
@@ -30,9 +34,11 @@ pub fn evaluate(ctrl: SExpr) -> (State, Store) {
 
    let mut st0 = inject(ctrl);
    let mut stepped = step(&st0, &mut store);
+   let mut states = vec![st0.clone(), stepped.clone()];
    while st0 != stepped {
       st0 = stepped;
       stepped = step(&st0, &mut store);
+      states.push(stepped.clone());
    }
-   (stepped, store)
+   (states, store)
 }
