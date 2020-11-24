@@ -76,9 +76,9 @@ fn handle_apply_prim_kont(k: Kont, st: &ValState) -> State {
    }
 }
 
-fn handle_callcc_kont(k: Kont, st: &ValState) -> State {
+fn handle_callcc_kont(k: Kont, st: &ValState, store: &mut Store) -> State {
    let ValState { ctrl: val, .. } = st.clone();
-   if let Kont::Callcc(next_kaddr) = k {
+   if let Kont::Callcc(ref callccenv, ref next_kaddr) = k {
       if let Val::Closure(Closure(clotype, body, cloenv)) = val {
          match clotype {
             CloType::MultiArg(params) => {
@@ -88,7 +88,7 @@ fn handle_callcc_kont(k: Kont, st: &ValState) -> State {
                State::Eval(SExprState::new(
                   body,
                   cloenv.insert(params[0].clone(), next_kaddr.clone()),
-                  next_kaddr,
+                  next_kaddr.clone(),
                   st.tick(1),
                ))
             }
@@ -96,13 +96,14 @@ fn handle_callcc_kont(k: Kont, st: &ValState) -> State {
                panic!("call/cc takes a multi-arg lambda, not vararg");
             }
          }
-      } else if let _kont_arg @ Val::Kont(..) = val {
-         // TODO: How to handle this case.
-         // (call/cc kont_arg)
-         // put kont_arg as the new cc, and give it a value of
-         // the old cc as its value.
-         // State::Apply(ValState::New(k, env, kont_arg, st.tick(1)))
-         panic!("Dont support (call/cc k) for now.");
+      } else if let Val::Kont(..) = val {
+         let valaddr = store.add_to_store(val, st);
+         State::Apply(ValState::new(
+            Val::Kont(k.clone()),
+            callccenv.clone(),
+            valaddr,
+            st.tick(1),
+         ))
       } else {
          panic!("Call/cc given wrong type of argument.");
       }
@@ -251,7 +252,7 @@ pub fn apply_step(st: &ValState, store: &mut Store) -> State {
          k @ Kont::Let(..) => handle_let_kont(k, st, store),
          k @ Kont::Prim(..) => handle_prim_kont(k, st, store),
          k @ Kont::ApplyPrim(..) => handle_apply_prim_kont(k, st),
-         k @ Kont::Callcc(..) => handle_callcc_kont(k, st),
+         k @ Kont::Callcc(..) => handle_callcc_kont(k, st, store),
          k @ Kont::Set(..) => handle_set_bang_kont(k, st, store),
          k @ Kont::ApplyList(..) => handle_apply_list_kont(k, st, store),
          k @ Kont::App(..) => handle_app(k, st, store),
