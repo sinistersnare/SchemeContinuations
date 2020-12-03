@@ -1,5 +1,7 @@
 # Shitty Scheme Interpreter #
 
+## Moved to my [AAMS](https://github.com/sinistersnare/aams) Repo ##
+
 Made this to try different continuation implementations,
 hope I get to do that! :)
 
